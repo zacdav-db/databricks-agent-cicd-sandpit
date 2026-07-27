@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -29,6 +31,52 @@ def test_langchain_managed_function_url() -> None:
     )
     with pytest.raises(ValueError, match="catalog.schema.function"):
         module._function_mcp_url("https://workspace.example", "not.fully_qualified")
+
+
+def test_langchain_uses_supported_multi_server_client_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "langchain_agent_lifecycle",
+        ROOT / "src" / "langchain_agent" / "agent.py",
+    )
+
+    class FakeSpan:
+        trace_id = "trace-id"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def set_inputs(self, _inputs: dict[str, str]) -> None:
+            return None
+
+        def set_outputs(self, _outputs: dict[str, str]) -> None:
+            return None
+
+    class FakeMcpClient:
+        async def get_tools(self) -> list[object]:
+            return []
+
+        async def __aenter__(self):
+            raise AssertionError("Multi-server MCP clients are not context managers.")
+
+    class FakeAgent:
+        async def ainvoke(self, _inputs: dict[str, object]) -> dict[str, object]:
+            return {"messages": [SimpleNamespace(content="managed MCP answer")]}
+
+    monkeypatch.setattr(module, "get_model", lambda: object())
+    monkeypatch.setattr(module, "WorkspaceClient", lambda: object())
+    monkeypatch.setattr(module, "_mcp_client", lambda _client: FakeMcpClient())
+    monkeypatch.setattr(module, "create_agent", lambda **_kwargs: FakeAgent())
+    monkeypatch.setattr(module.mlflow, "start_span", lambda **_kwargs: FakeSpan())
+
+    assert asyncio.run(module.invoke_agent("question")) == (
+        "managed MCP answer",
+        "trace-id",
+    )
 
 
 def test_agent_service_inventory_names_and_connection() -> None:
