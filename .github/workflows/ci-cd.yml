@@ -115,7 +115,7 @@ jobs:
     needs: [test, package-deployment]
     # The workspace IP ACL rejects ephemeral GitHub-hosted addresses.
     runs-on: [self-hosted, macOS, ARM64, sandpit-deploy]
-    environment: development
+    environment: production
     env:
       DATABRICKS_AUTH_TYPE: oauth-m2m
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}

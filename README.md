@@ -215,8 +215,8 @@ pull request and the named checks on both branches, blocks force pushes and
 deletion, and applies to administrators. `dev` is the repository's default
 branch, so ordinary changes naturally enter the development environment first.
 
-The `development` and `production` GitHub environments use the same
-repository-level sandpit credentials for now:
+Both deployment jobs use the existing `production` GitHub environment for
+credentials in this sandpit:
 
 - Variable `DATABRICKS_HOST`
 - Secret `DATABRICKS_CLIENT_ID`
@@ -233,7 +233,8 @@ connection secret independently.
 Both targets use the same Databricks workspace, catalog, warehouse, and model
 endpoint. They do not share schemas, functions, MLflow experiments, trace
 tables, App names, Agent Services, connections, or bundle root paths. Every
-target-specific resource uses an explicit `dev` or `prod` prefix.
+target-specific resource uses an explicit `dev` or `prod` prefix. The shared
+GitHub credential environment can be split later without changing the DAB.
 
 The workspace IP ACL rejects ephemeral GitHub-hosted addresses, so only the
 two deployment jobs use a repository-scoped, `sandpit-deploy` self-hosted
