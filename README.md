@@ -167,6 +167,7 @@ should replace that mode with Omnigent shared-server SSO.
 Prerequisites:
 
 - Python 3.12+
+- `uv` 0.11.16+
 - Databricks CLI
 - `jq`
 - A valid `sandpit` profile
@@ -177,8 +178,8 @@ Prerequisites:
 Create a virtual environment and install the deployment dependencies:
 
 ```bash
-python3.12 -m venv .venv
-.venv/bin/pip install \
+uv venv --python 3.12 .venv
+uv pip install --python .venv/bin/python \
   -r requirements-ci.txt \
   -r src/langchain_agent/requirements.txt \
   -r src/mcp_server/requirements.txt
@@ -196,7 +197,9 @@ bundle adds app resource bindings.
 
 ## GitHub Actions
 
-The workflow in [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml):
+The workflow in [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml)
+uses a pinned `uv` release and its dependency cache for fast, reproducible
+environment creation:
 
 1. Lints, tests, and parses the Omnigent YAML on every pull request.
 2. Bootstraps the trace tables and two UC function tools on `main`.
