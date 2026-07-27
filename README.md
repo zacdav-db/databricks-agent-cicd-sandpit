@@ -14,17 +14,48 @@ It deploys three apps:
 ## Architecture
 
 ```mermaid
-flowchart LR
-    G["GitHub Actions"] -->|"bundle deploy + bundle run"| D["Databricks Apps"]
-    D --> L["LangChain agent"]
-    D --> M["Custom MCP server"]
-    D --> O["Omnigent supervisor"]
-    O -->|"approved subagent call"| M
-    M -->|"authenticated invocation"| L
-    O -->|"Streamable HTTP"| M
-    O -->|"Databricks managed MCP"| U["UC cost function"]
-    L --> F["Foundation Model API"]
-    L --> T["UC OpenTelemetry trace tables"]
+flowchart TB
+    User["Authenticated user"]
+
+    subgraph Delivery["CI/CD delivery path"]
+        Git["Pull request or push to main"]
+        CI["GitHub Actions<br/>lint · test · validate"]
+        Bundle["Databricks Asset Bundle<br/>deploy · run · smoke test"]
+        Git --> CI --> Bundle
+    end
+
+    subgraph Workspace["Databricks workspace"]
+        subgraph Apps["Databricks Apps"]
+            Omni["Omnigent supervisor<br/>YAML-defined custom agent"]
+            Policy{"Approval policies<br/>subagent spawn · each $1"}
+            Subagent["Omnigent subagent<br/>databricks_agent"]
+            MCP["Custom MCP server<br/>Streamable HTTP · 5 tools"]
+            LangChain["LangChain agent<br/>FastAPI · tool calling"]
+        end
+
+        UC["Unity Catalog function<br/>estimate_project_cost"]
+        Model["Foundation Model API"]
+        Experiment["MLflow experiment"]
+        Traces[("Unity Catalog OpenTelemetry tables<br/>spans · logs · metrics · annotations")]
+    end
+
+    Bundle --> Omni
+    Bundle --> MCP
+    Bundle --> LangChain
+    CI -->|"idempotent bootstrap"| UC
+    CI -->|"configure trace location"| Experiment
+
+    User --> Omni
+    Omni -->|"before delegation or cost checkpoint"| Policy
+    User -->|"approve or reject"| Policy
+    Policy -->|"approved"| Subagent
+    Subagent -->|"invoke_langchain_agent"| MCP
+    Omni -->|"custom MCP tools"| MCP
+    Omni -->|"Databricks managed MCP"| UC
+    MCP -->|"OAuth app-to-app call"| LangChain
+    LangChain -->|"ChatDatabricks"| Model
+    LangChain -->|"MLflow autolog"| Experiment
+    Experiment -->|"governed trace storage"| Traces
 ```
 
 ## Trace storage
