@@ -20,6 +20,8 @@ def main() -> None:
         "DATABRICKS_HOST": "https://example.cloud.databricks.com",
         "DATABRICKS_WAREHOUSE_ID": "warehouse-id",
         "MODEL_ENDPOINT": "databricks-claude-sonnet-4-5",
+        "UC_FUNCTION_MCP_PATH": "catalog/schema/estimate_project_cost",
+        "UC_FUNCTION_TOOL_NAME": "catalog__schema__estimate_project_cost",
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)

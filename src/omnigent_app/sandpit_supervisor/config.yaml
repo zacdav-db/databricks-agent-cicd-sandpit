@@ -35,9 +35,9 @@ tools:
 
   project_cost:
     type: mcp
-    url: ${DATABRICKS_HOST}/api/2.0/mcp/functions/zacdav_sandpit_catalog/default/estimate_project_cost
+    url: ${DATABRICKS_HOST}/api/2.0/mcp/functions/${UC_FUNCTION_MCP_PATH}
     tools:
-      - zacdav_sandpit_catalog__default__estimate_project_cost
+      - ${UC_FUNCTION_TOOL_NAME}
     auth:
       type: databricks
       profile: ${DATABRICKS_CONFIG_PROFILE}

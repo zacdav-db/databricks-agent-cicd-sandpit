@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from agent import invoke_agent
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Sandpit LangChain Agent",
@@ -42,4 +46,8 @@ def invoke(request: InvocationRequest) -> InvocationResponse:
         output, trace_id = invoke_agent(request.input)
         return InvocationResponse(output=output, trace_id=trace_id)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Agent invocation failed: {exc}") from exc
+        logger.exception("Agent invocation failed.")
+        raise HTTPException(
+            status_code=502,
+            detail="Agent invocation failed.",
+        ) from exc

@@ -141,4 +141,4 @@ resources:
             permission: CAN_USE
       permissions:
         - level: CAN_USE
-          group_name: users
+          user_name: zachary.davies@databricks.com

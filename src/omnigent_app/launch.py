@@ -64,6 +64,8 @@ def _render_agent_bundle() -> pathlib.Path:
         "${DATABRICKS_CONFIG_PROFILE}": _require_env("DATABRICKS_CONFIG_PROFILE"),
         "${DATABRICKS_WAREHOUSE_ID}": _require_env("DATABRICKS_WAREHOUSE_ID"),
         "${MODEL_ENDPOINT}": _require_env("MODEL_ENDPOINT"),
+        "${UC_FUNCTION_MCP_PATH}": _require_env("UC_FUNCTION_MCP_PATH"),
+        "${UC_FUNCTION_TOOL_NAME}": _require_env("UC_FUNCTION_TOOL_NAME"),
     }
     for config_path in destination.rglob("*.yaml"):
         rendered = config_path.read_text(encoding="utf-8")
@@ -73,6 +75,14 @@ def _render_agent_bundle() -> pathlib.Path:
             raise RuntimeError(f"Unresolved template variable in {config_path}.")
         config_path.write_text(rendered, encoding="utf-8")
     return destination
+
+
+def _set_uc_function_variables() -> None:
+    parts = _require_env("UC_FUNCTION_FULL_NAME").split(".")
+    if len(parts) != 3 or any(not part.replace("_", "").isalnum() for part in parts):
+        raise RuntimeError("UC_FUNCTION_FULL_NAME must be catalog.schema.function.")
+    os.environ["UC_FUNCTION_MCP_PATH"] = "/".join(parts)
+    os.environ["UC_FUNCTION_TOOL_NAME"] = "__".join(parts)
 
 
 def _wait_for_server(url: str, timeout_seconds: int = 120) -> None:
@@ -99,57 +109,25 @@ def _stop_process(process: subprocess.Popen[bytes] | None) -> None:
         process.wait()
 
 
+def _wait_for_children(
+    server: subprocess.Popen[bytes],
+    host: subprocess.Popen[bytes],
+) -> int:
+    while True:
+        server_status = server.poll()
+        if server_status is not None:
+            return server_status
+        host_status = host.poll()
+        if host_status is not None:
+            raise RuntimeError(f"Omnigent host exited unexpectedly with {host_status}.")
+        time.sleep(1)
+
+
 def main() -> None:
     client = WorkspaceClient()
     profile_path = _write_app_profile()
-    source_root = str(pathlib.Path(__file__).parent)
-    existing_pythonpath = os.getenv("PYTHONPATH")
-    os.environ["PYTHONPATH"] = (
-        f"{source_root}{os.pathsep}{existing_pythonpath}"
-        if existing_pythonpath
-        else source_root
-    )
-    # Databricks Apps provides the external authentication boundary. Allow the
-    # colocated loopback host process to register without a second login flow.
-    os.environ["OMNIGENT_LOCAL_SINGLE_USER"] = "1"
-    os.environ["OMNIGENT_DATABRICKS_EXTRA_HEADERS"] = json.dumps(
-        {"X-Forwarded-Email": _require_env("OMNIGENT_HOST_OWNER")},
-    )
-    os.environ["DATABRICKS_CONFIG_FILE"] = str(profile_path)
-    os.environ["DATABRICKS_CONFIG_PROFILE"] = "app"
-    os.environ["LANGCHAIN_AGENT_URL"] = _app_url(client, "LANGCHAIN_AGENT_APP_NAME")
-    os.environ["CUSTOM_MCP_URL"] = _app_url(client, "CUSTOM_MCP_APP_NAME")
-    agent_bundle = _render_agent_bundle()
-
-    port = os.getenv("DATABRICKS_APP_PORT", "8000")
-    # Databricks Apps currently builds Python applications with Python 3.11.
-    # Omnigent 0.6 requires Python 3.12, so uv supplies a small isolated runtime
-    # without changing the platform-managed interpreter.
-    uvx_prefix = [
-        "uvx",
-        "--python",
-        "3.12",
-        "--from",
-        "omnigent[databricks]==0.6.0",
-        "omni",
-    ]
-    server_command = [
-        *uvx_prefix,
-        "server",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        port,
-        "--database-uri",
-        "sqlite:////tmp/omnigent.db",
-        "--artifact-location",
-        "/tmp/omnigent-artifacts",
-        "--agent",
-        str(agent_bundle),
-        "--no-open",
-    ]
-    local_server_url = f"http://127.0.0.1:{port}"
-    server = subprocess.Popen(server_command, start_new_session=True)
+    agent_bundle: pathlib.Path | None = None
+    server: subprocess.Popen[bytes] | None = None
     host: subprocess.Popen[bytes] | None = None
 
     def shutdown(_signum: int, _frame: object) -> None:
@@ -161,6 +139,59 @@ def main() -> None:
     signal.signal(signal.SIGINT, shutdown)
 
     try:
+        source_root = str(pathlib.Path(__file__).parent)
+        existing_pythonpath = os.getenv("PYTHONPATH")
+        os.environ["PYTHONPATH"] = (
+            f"{source_root}{os.pathsep}{existing_pythonpath}"
+            if existing_pythonpath
+            else source_root
+        )
+        # Databricks Apps provides the external authentication boundary. Allow
+        # the colocated host to register without a second login flow.
+        os.environ["OMNIGENT_LOCAL_SINGLE_USER"] = "1"
+        os.environ["OMNIGENT_DATABRICKS_EXTRA_HEADERS"] = json.dumps(
+            {"X-Forwarded-Email": _require_env("OMNIGENT_HOST_OWNER")},
+        )
+        os.environ["DATABRICKS_CONFIG_FILE"] = str(profile_path)
+        os.environ["DATABRICKS_CONFIG_PROFILE"] = "app"
+        os.environ["LANGCHAIN_AGENT_URL"] = _app_url(
+            client,
+            "LANGCHAIN_AGENT_APP_NAME",
+        )
+        os.environ["CUSTOM_MCP_URL"] = _app_url(client, "CUSTOM_MCP_APP_NAME")
+        _set_uc_function_variables()
+        agent_bundle = _render_agent_bundle()
+
+        port = os.getenv("DATABRICKS_APP_PORT", "8000")
+        # Databricks Apps builds Python applications with Python 3.11.
+        # Omnigent 0.6 requires 3.12, so uv supplies an isolated runtime.
+        uvx_prefix = [
+            "uvx",
+            "--python",
+            "3.12",
+            "--from",
+            "omnigent[databricks]==0.6.0",
+            "omni",
+        ]
+        server = subprocess.Popen(
+            [
+                *uvx_prefix,
+                "server",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                port,
+                "--database-uri",
+                "sqlite:////tmp/omnigent.db",
+                "--artifact-location",
+                "/tmp/omnigent-artifacts",
+                "--agent",
+                str(agent_bundle),
+                "--no-open",
+            ],
+            start_new_session=True,
+        )
+        local_server_url = f"http://127.0.0.1:{port}"
         _wait_for_server(local_server_url)
         host = subprocess.Popen(
             [
@@ -172,10 +203,13 @@ def main() -> None:
             ],
             start_new_session=True,
         )
-        raise SystemExit(server.wait())
+        raise SystemExit(_wait_for_children(server, host))
     finally:
         _stop_process(host)
         _stop_process(server)
+        shutil.rmtree(profile_path.parent, ignore_errors=True)
+        if agent_bundle is not None:
+            shutil.rmtree(agent_bundle.parent, ignore_errors=True)
 
 
 if __name__ == "__main__":

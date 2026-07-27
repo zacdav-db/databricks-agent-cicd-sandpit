@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 from pathlib import Path
 
 import pytest
@@ -51,3 +52,32 @@ def test_omnigent_cost_policy_asks_at_each_new_dollar() -> None:
 
     with pytest.raises(ValueError, match="positive"):
         module.every_dollar_cost_gate(0)
+
+
+def test_omnigent_launcher_renders_uc_function(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "omnigent_launcher",
+        ROOT / "src" / "omnigent_app" / "launch.py",
+    )
+    values = {
+        "CUSTOM_MCP_URL": "https://custom-mcp.example",
+        "DATABRICKS_CONFIG_PROFILE": "app",
+        "DATABRICKS_HOST": "https://workspace.example",
+        "DATABRICKS_WAREHOUSE_ID": "warehouse-id",
+        "MODEL_ENDPOINT": "model-endpoint",
+        "UC_FUNCTION_FULL_NAME": "catalog_name.schema_name.estimate_project_cost",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+
+    module._set_uc_function_variables()
+    bundle = module._render_agent_bundle()
+    try:
+        config = (bundle / "config.yaml").read_text(encoding="utf-8")
+        assert "/catalog_name/schema_name/estimate_project_cost" in config
+        assert "catalog_name__schema_name__estimate_project_cost" in config
+        assert "${" not in config
+    finally:
+        shutil.rmtree(bundle.parent)

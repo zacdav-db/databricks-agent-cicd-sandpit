@@ -65,7 +65,10 @@ LangChain app is traced separately by MLflow.
 
 Databricks Apps currently supplies Python 3.11, while Omnigent 0.6 requires
 Python 3.12. The launcher uses `uvx` to create an isolated Python 3.12 runtime;
-the application remains fully bundle-deployed and reproducible.
+the Omnigent version and application definition remain bundle-controlled.
+This sandpit instance uses Omnigent's local single-user mode and grants the
+Omnigent app only to `zachary.davies@databricks.com`. A multi-user rollout
+should replace that mode with Omnigent shared-server SSO.
 
 ## Local deployment
 
@@ -73,6 +76,7 @@ Prerequisites:
 
 - Python 3.12+
 - Databricks CLI
+- `jq`
 - A valid `sandpit` profile
 
 Create a virtual environment and install the deployment dependencies:
@@ -88,7 +92,7 @@ python3.12 -m venv .venv
 Deploy and run all checks:
 
 ```bash
-.venv/bin/bash scripts/deploy_local.sh dev
+bash scripts/deploy_local.sh dev
 ```
 
 The bootstrap step is idempotent. It creates or updates the UC function and
