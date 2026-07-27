@@ -119,7 +119,9 @@ The workspace IP ACL rejects ephemeral GitHub-hosted addresses, so only the
 deploy job uses a repository-scoped, `sandpit-deploy` self-hosted runner on an
 authorized network. Pull-request tests remain on GitHub-hosted runners. The
 runner is installed as a macOS launch service on the sandpit machine and has
-Homebrew Python 3.12 available as `python3.12`.
+Homebrew Python 3.12 available as `python3.12`. The hosted test job publishes a
+one-day macOS wheelhouse artifact, allowing the network-restricted deploy
+runner to install its small deployment dependency set without reaching PyPI.
 
 For this isolated proof, the CI service principal is a workspace administrator
 so it can idempotently bootstrap governed resources. A production rollout
