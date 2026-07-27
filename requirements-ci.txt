@@ -1,4 +1,3 @@
-databricks-mcp>=0.2,<1
 databricks-sdk>=0.72,<1
 mlflow[databricks]>=3.14.0,<4
 omnigent[databricks]==0.6.0
