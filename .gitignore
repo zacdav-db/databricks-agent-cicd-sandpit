@@ -1,7 +1,9 @@
 .databricks/
+.deploy-venv/
 .pytest_cache/
 .ruff_cache/
 .venv/
+deploy-wheelhouse/
 __pycache__/
 *.egg-info/
 *.pyc
