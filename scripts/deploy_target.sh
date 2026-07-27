@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-target="${1:?Usage: deploy_target.sh <dev|prod> <experiment-id>}"
-experiment_id="${2:?Usage: deploy_target.sh <dev|prod> <experiment-id>}"
+target="${1:?Usage: deploy_target.sh <dev|prod>}"
 python_bin="${PYTHON_BIN:-python}"
 export PYTHON_BIN="${python_bin}"
-export UC_CATALOG="${UC_CATALOG:-zacdav_sandpit_catalog}"
-export UC_SCHEMA="${UC_SCHEMA:-default}"
-export UC_COST_FUNCTION="${UC_COST_FUNCTION:-estimate_project_cost}"
-export UC_TIME_FUNCTION="${UC_TIME_FUNCTION:-current_utc_timestamp}"
-export UC_TRACE_TABLE_PREFIX="${UC_TRACE_TABLE_PREFIX:-sandpit_agent_cicd}"
 
 if [[ "${target}" != "dev" && "${target}" != "prod" ]]; then
   echo "Target must be dev or prod." >&2
@@ -20,14 +14,30 @@ if [[ ! -x "${python_bin}" ]]; then
   exit 1
 fi
 
+printf 'Bootstrapping isolated %s Unity Catalog resources\n' "${target}"
+bootstrap_json="$(
+  "${python_bin}" scripts/bootstrap_resources.py --target "${target}"
+)"
+catalog="$(jq -er '.catalog' <<<"${bootstrap_json}")"
+schema="$(jq -er '.schema' <<<"${bootstrap_json}")"
+cost_function_name="$(jq -er '.cost_function_name' <<<"${bootstrap_json}")"
+time_function_name="$(jq -er '.time_function_name' <<<"${bootstrap_json}")"
+table_prefix="$(jq -er '.table_prefix' <<<"${bootstrap_json}")"
+experiment_id="$(jq -er '.experiment_id' <<<"${bootstrap_json}")"
+export UC_CATALOG="${catalog}"
+export UC_SCHEMA="${schema}"
+export UC_COST_FUNCTION="${cost_function_name}"
+export UC_TIME_FUNCTION="${time_function_name}"
+export UC_TRACE_TABLE_PREFIX="${table_prefix}"
+
 bundle_args=(
   -t "${target}"
   --var "experiment_id=${experiment_id}"
-  --var "catalog=${UC_CATALOG}"
-  --var "schema=${UC_SCHEMA}"
-  --var "uc_function_name=${UC_COST_FUNCTION}"
-  --var "uc_time_function_name=${UC_TIME_FUNCTION}"
-  --var "trace_table_prefix=${UC_TRACE_TABLE_PREFIX}"
+  --var "catalog=${catalog}"
+  --var "schema=${schema}"
+  --var "uc_function_name=${cost_function_name}"
+  --var "uc_time_function_name=${time_function_name}"
+  --var "trace_table_prefix=${table_prefix}"
 )
 
 printf 'Validating %s bundle\n' "${target}"

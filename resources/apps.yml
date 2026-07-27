@@ -1,7 +1,7 @@
 resources:
   apps:
     mcp_server:
-      name: mcp-sandpit-tools-${bundle.target}
+      name: ${var.resource_prefix}-sandpit-mcp-tools
       description: Custom Streamable HTTP MCP server deployed by a Databricks Asset Bundle.
       source_code_path: ../src/mcp_server
       config:
@@ -19,7 +19,7 @@ resources:
           group_name: users
 
     langchain_agent:
-      name: sandpit-lc-agent-${bundle.target}
+      name: ${var.resource_prefix}-sandpit-langchain-agent
       description: LangChain tool-calling agent with MLflow traces stored in Unity Catalog.
       source_code_path: ../src/langchain_agent
       config:
@@ -113,7 +113,7 @@ resources:
           group_name: users
 
     omnigent:
-      name: sandpit-omnigent-${bundle.target}
+      name: ${var.resource_prefix}-sandpit-omnigent
       description: Omnigent server with a pre-registered YAML supervisor agent.
       source_code_path: ../src/omnigent_app
       config:

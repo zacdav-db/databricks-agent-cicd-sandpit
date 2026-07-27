@@ -15,8 +15,8 @@ from databricks.sdk.service.catalog import ConnectionType
 def _inventory_names(target: str) -> tuple[str, str, str]:
     if target not in {"dev", "prod"}:
         raise ValueError("Target must be dev or prod.")
-    stem = f"sandpit_langchain_agent_{target}"
-    return f"sandpit-lc-agent-{target}", stem, f"{stem}_connection"
+    stem = f"{target}_sandpit_langchain_agent"
+    return f"{target}-sandpit-langchain-agent", stem, f"{stem}_connection"
 
 
 def _connection_options(
@@ -175,7 +175,7 @@ def parse_args() -> argparse.Namespace:
         "--catalog",
         default=os.getenv("UC_CATALOG", "zacdav_sandpit_catalog"),
     )
-    parser.add_argument("--schema", default=os.getenv("UC_SCHEMA", "default"))
+    parser.add_argument("--schema", default=os.getenv("UC_SCHEMA"))
     parser.add_argument(
         "--metadata-principal",
         default="zachary.davies@databricks.com",
@@ -186,6 +186,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    schema = args.schema or f"{args.target}_agent_cicd"
     app_name, service_name, connection_name = _inventory_names(args.target)
     workspace_client = (
         WorkspaceClient(profile=args.profile) if args.profile else WorkspaceClient()
@@ -197,14 +198,14 @@ def main() -> None:
     connection_full_name = _upsert_connection(
         workspace_client,
         catalog=args.catalog,
-        schema=args.schema,
+        schema=schema,
         connection_name=connection_name,
         app_url=app.url,
     )
     agent_service_full_name = _upsert_agent_service(
         workspace_client,
         catalog=args.catalog,
-        schema=args.schema,
+        schema=schema,
         service_name=service_name,
         connection_full_name=connection_full_name,
         target=args.target,

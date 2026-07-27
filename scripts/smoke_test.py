@@ -138,43 +138,46 @@ def _mcp_request(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile")
-    parser.add_argument("--target", default="prod")
-    catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
-    schema = os.getenv("UC_SCHEMA", "default")
-    trace_prefix = os.getenv("UC_TRACE_TABLE_PREFIX", "sandpit_agent_cicd")
-    cost_function = os.getenv("UC_COST_FUNCTION", "estimate_project_cost")
-    time_function = os.getenv("UC_TIME_FUNCTION", "current_utc_timestamp")
+    parser.add_argument("--target", required=True, choices=("dev", "prod"))
     parser.add_argument(
         "--warehouse-id",
         default=os.getenv("DATABRICKS_WAREHOUSE_ID", "f7a871ffa2a9ab80"),
     )
-    parser.add_argument(
-        "--trace-table",
-        default=f"{catalog}.{schema}.{trace_prefix}_otel_spans",
-    )
-    parser.add_argument(
-        "--uc-function",
-        default=f"{catalog}.{schema}.{cost_function}",
-    )
-    parser.add_argument(
-        "--uc-time-function",
-        default=f"{catalog}.{schema}.{time_function}",
-    )
+    parser.add_argument("--trace-table")
+    parser.add_argument("--uc-function")
+    parser.add_argument("--uc-time-function")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
+    schema = os.getenv("UC_SCHEMA", f"{args.target}_agent_cicd")
+    trace_prefix = os.getenv(
+        "UC_TRACE_TABLE_PREFIX",
+        f"{args.target}_sandpit_agent_cicd",
+    )
+    args.trace_table = (
+        args.trace_table or f"{catalog}.{schema}.{trace_prefix}_otel_spans"
+    )
+    args.uc_function = (
+        args.uc_function
+        or f"{catalog}.{schema}.{args.target}_estimate_project_cost"
+    )
+    args.uc_time_function = (
+        args.uc_time_function
+        or f"{catalog}.{schema}.{args.target}_current_utc_timestamp"
+    )
     client = WorkspaceClient(
         config=Config(
             profile=args.profile,
             http_timeout_seconds=180,
         ),
     )
-    suffix = args.target
-    mcp_url = _wait_for_app(client, f"mcp-sandpit-tools-{suffix}")
-    agent_url = _wait_for_app(client, f"sandpit-lc-agent-{suffix}")
-    omnigent_url = _wait_for_app(client, f"sandpit-omnigent-{suffix}")
+    prefix = args.target
+    mcp_url = _wait_for_app(client, f"{prefix}-sandpit-mcp-tools")
+    agent_url = _wait_for_app(client, f"{prefix}-sandpit-langchain-agent")
+    omnigent_url = _wait_for_app(client, f"{prefix}-sandpit-omnigent")
     _progress("All three Databricks Apps report RUNNING.")
 
     _api_json(client, "GET", f"{agent_url}/api/health")
@@ -317,7 +320,7 @@ def main() -> None:
 
     agent_service_name = (
         f"{args.uc_function.rsplit('.', maxsplit=1)[0]}."
-        f"sandpit_langchain_agent_{suffix}"
+        f"{prefix}_sandpit_langchain_agent"
     )
     agent_service = _api_json(
         client,
