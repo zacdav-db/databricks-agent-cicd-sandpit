@@ -98,8 +98,9 @@ provides:
   MCP endpoints.
 - The LangChain Apps are registered after deployment as target-specific Unity
   Catalog Agent Services. Agent Services are currently beta inventory and
-  permission objects; runtime invocation is not yet available. Live traffic
-  continues to use the DAB-deployed App endpoint.
+  permission objects; the sandpit owner receives `EXECUTE` and `READ_METADATA`.
+  Runtime invocation is not yet available, so live traffic continues to use
+  the DAB-deployed App endpoint.
 - The custom MCP remains a stateless DAB App. Databricks currently treats
   custom MCP servers hosted in Apps separately from Unity Catalog MCP Services
   and explicitly does not support registering an App as an MCP Service.

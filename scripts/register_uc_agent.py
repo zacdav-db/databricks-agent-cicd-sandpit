@@ -167,7 +167,7 @@ def _grant_metadata(
             "changes": [
                 {
                     "principal": principal,
-                    "add": ["READ_METADATA"],
+                    "add": ["EXECUTE", "READ_METADATA"],
                 },
             ],
         },
@@ -179,7 +179,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target", required=True, choices=("dev", "prod"))
     parser.add_argument("--catalog", required=True)
     parser.add_argument("--schema", required=True)
-    parser.add_argument("--metadata-principal", default="users")
+    parser.add_argument(
+        "--metadata-principal",
+        default="zachary.davies@databricks.com",
+    )
     parser.add_argument("--profile")
     return parser.parse_args()
 
