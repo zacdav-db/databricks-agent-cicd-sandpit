@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from urllib.parse import quote, urlsplit
 
 from databricks.sdk import WorkspaceClient
@@ -55,8 +54,8 @@ def _upsert_connection(
     except NotFound:
         connection_exists = False
 
-    client_id = os.getenv("DATABRICKS_CLIENT_ID")
-    client_secret = os.getenv("DATABRICKS_CLIENT_SECRET")
+    client_id = workspace_client.config.client_id
+    client_secret = workspace_client.config.client_secret
     if not client_id or not client_secret:
         if not connection_exists:
             raise RuntimeError(

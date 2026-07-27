@@ -128,11 +128,17 @@ def test_uc_registration_extends_the_sdk_client(
     class FakeWorkspaceClient:
         connections = FakeConnections()
         api_client = FakeApiClient()
-        config = type("Config", (), {"host": "https://workspace.example"})()
+        config = type(
+            "Config",
+            (),
+            {
+                "host": "https://workspace.example",
+                "client_id": "client-id",
+                "client_secret": "client-secret",
+            },
+        )()
 
     monkeypatch.setattr(module, "NotFound", FakeNotFound)
-    monkeypatch.setenv("DATABRICKS_CLIENT_ID", "client-id")
-    monkeypatch.setenv("DATABRICKS_CLIENT_SECRET", "client-secret")
     client = FakeWorkspaceClient()
 
     connection = module._upsert_connection(

@@ -170,6 +170,9 @@ Prerequisites:
 - Databricks CLI
 - `jq`
 - A valid `sandpit` profile
+- OAuth M2M credentials in `DATABRICKS_CLIENT_ID` and
+  `DATABRICKS_CLIENT_SECRET` when creating either target's Agent Service
+  connection for the first time
 
 Create a virtual environment and install the deployment dependencies:
 
@@ -211,6 +214,11 @@ The `production` GitHub environment needs:
 
 The credentials belong to a dedicated Databricks service principal and are
 used with OAuth M2M. No PAT, local profile, or secret is committed.
+`register_uc_agent.py` reads the same resolved credentials from
+`WorkspaceClient.config` to seed the target-specific OAuth connection. Reusing
+the deployment principal is acceptable for this isolated proof; production
+should provision a dedicated, non-admin agent-caller principal and rotate its
+connection secret independently.
 
 Both targets currently use the same Databricks workspace, catalog, warehouse,
 MLflow experiment, and UC functions. Bundle target suffixes, Agent Service
