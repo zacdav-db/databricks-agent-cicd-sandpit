@@ -92,7 +92,13 @@ def create_uc_functions(
     RETURNS STRING
     LANGUAGE SQL
     COMMENT 'Return the current UTC timestamp in ISO-8601 format.'
-    RETURN CONCAT(DATE_FORMAT(CURRENT_TIMESTAMP(), "yyyy-MM-dd'T'HH:mm:ss.SSS"), 'Z')
+    RETURN CONCAT(
+      DATE_FORMAT(
+        CONVERT_TIMEZONE(CURRENT_TIMEZONE(), 'UTC', CURRENT_TIMESTAMP()),
+        "yyyy-MM-dd'T'HH:mm:ss.SSS"
+      ),
+      'Z'
+    )
     """
     _execute(client, warehouse_id, cost_statement)
     _execute(client, warehouse_id, time_statement)
