@@ -80,20 +80,19 @@ async def invoke_agent(message: str) -> tuple[str, str]:
         span.set_inputs({"message": message})
         workspace_client = WorkspaceClient()
         mcp_client = _mcp_client(workspace_client)
-        async with mcp_client:
-            tools = await mcp_client.get_tools()
-            agent = create_agent(
-                model=model,
-                tools=tools,
-                system_prompt=(
-                    "You are a concise delivery-planning assistant. "
-                    "Use the governed Unity Catalog tools for current time and cost estimates. "
-                    "State assumptions and never invent a tool result."
-                ),
-            )
-            result = await agent.ainvoke(
-                {"messages": [{"role": "user", "content": message}]},
-            )
+        tools = await mcp_client.get_tools()
+        agent = create_agent(
+            model=model,
+            tools=tools,
+            system_prompt=(
+                "You are a concise delivery-planning assistant. "
+                "Use the governed Unity Catalog tools for current time and cost estimates. "
+                "State assumptions and never invent a tool result."
+            ),
+        )
+        result = await agent.ainvoke(
+            {"messages": [{"role": "user", "content": message}]},
+        )
         output = _message_text(result["messages"][-1])
         span.set_outputs({"output": output})
         return output, span.trace_id
