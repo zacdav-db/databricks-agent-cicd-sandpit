@@ -38,7 +38,7 @@ jobs:
       - name: Build macOS deploy wheelhouse
         run: >-
           python -m pip download
-          --dest .deploy-wheelhouse
+          --dest deploy-wheelhouse
           --only-binary=:all:
           --platform macosx_11_0_arm64
           --python-version 3.12
@@ -50,7 +50,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: deploy-wheelhouse
-          path: .deploy-wheelhouse
+          path: deploy-wheelhouse
           retention-days: 1
 
   deploy:
@@ -71,13 +71,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: deploy-wheelhouse
-          path: .deploy-wheelhouse
+          path: deploy-wheelhouse
       - name: Install deployment dependencies
         run: |
           python3.12 -m venv .deploy-venv
           .deploy-venv/bin/pip install \
             --no-index \
-            --find-links .deploy-wheelhouse \
+            --find-links deploy-wheelhouse \
             -r requirements-deploy.txt
       - name: Bootstrap trace tables and UC function
         id: bootstrap
