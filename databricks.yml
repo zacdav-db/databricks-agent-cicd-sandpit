@@ -11,7 +11,10 @@ variables:
     default: zacdav_sandpit_catalog
   schema:
     description: Unity Catalog schema used by the demo.
-    default: default
+    default: dev_agent_cicd
+  resource_prefix:
+    description: Environment prefix used by target-specific workspace resources.
+    default: dev
   warehouse_id:
     description: SQL warehouse used by tracing and Unity Catalog functions.
     default: f7a871ffa2a9ab80
@@ -22,13 +25,13 @@ variables:
     description: ID returned by scripts/bootstrap_resources.py.
   trace_table_prefix:
     description: Prefix for the Unity Catalog OpenTelemetry trace tables.
-    default: sandpit_agent_cicd
+    default: dev_sandpit_agent_cicd
   uc_function_name:
     description: Unity Catalog cost function exposed through managed MCP.
-    default: estimate_project_cost
+    default: dev_estimate_project_cost
   uc_time_function_name:
     description: Unity Catalog time function exposed through managed MCP.
-    default: current_utc_timestamp
+    default: dev_current_utc_timestamp
 
 scripts:
   register_uc_agent:
@@ -44,12 +47,24 @@ targets:
   dev:
     default: true
     mode: development
+    variables:
+      resource_prefix: dev
+      schema: dev_agent_cicd
+      trace_table_prefix: dev_sandpit_agent_cicd
+      uc_function_name: dev_estimate_project_cost
+      uc_time_function_name: dev_current_utc_timestamp
     workspace:
       host: https://fevm-zacdav-sandpit.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
 
   prod:
     mode: production
+    variables:
+      resource_prefix: prod
+      schema: prod_agent_cicd
+      trace_table_prefix: prod_sandpit_agent_cicd
+      uc_function_name: prod_estimate_project_cost
+      uc_time_function_name: prod_current_utc_timestamp
     workspace:
       host: https://fevm-zacdav-sandpit.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

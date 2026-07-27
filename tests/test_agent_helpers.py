@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -115,9 +116,9 @@ def test_agent_service_inventory_names_and_connection() -> None:
         ROOT / "scripts" / "register_uc_agent.py",
     )
     assert module._inventory_names("prod") == (
-        "sandpit-lc-agent-prod",
-        "sandpit_langchain_agent_prod",
-        "sandpit_langchain_agent_prod_connection",
+        "prod-sandpit-langchain-agent",
+        "prod_sandpit_langchain_agent",
+        "prod_sandpit_langchain_agent_connection",
     )
     options = module._connection_options(
         "https://agent.example/",
@@ -215,6 +216,85 @@ def test_uc_registration_extends_the_sdk_client(
         "principal": "owner@example.com",
         "add": ["EXECUTE", "READ_METADATA"],
     }
+
+
+def test_bundle_targets_match_bootstrap_namespaces() -> None:
+    bootstrap = _load(
+        "bootstrap_target_defaults",
+        ROOT / "scripts" / "bootstrap_resources.py",
+    )
+    bundle = yaml.safe_load((ROOT / "databricks.yml").read_text(encoding="utf-8"))
+    resources = yaml.safe_load(
+        (ROOT / "resources" / "apps.yml").read_text(encoding="utf-8"),
+    )
+
+    for target in ("dev", "prod"):
+        variables = bundle["targets"][target]["variables"]
+        defaults = bootstrap._target_defaults(target)
+        assert variables["resource_prefix"] == target
+        assert variables["schema"] == defaults["schema"]
+        assert variables["trace_table_prefix"] == defaults["table_prefix"]
+        assert variables["uc_function_name"] == defaults["cost_function_name"]
+        assert variables["uc_time_function_name"] == defaults["time_function_name"]
+
+    apps = resources["resources"]["apps"]
+    assert apps["langchain_agent"]["name"] == (
+        "${var.resource_prefix}-sandpit-langchain-agent"
+    )
+    assert apps["mcp_server"]["name"] == "${var.resource_prefix}-sandpit-mcp-tools"
+    assert apps["omnigent"]["name"] == "${var.resource_prefix}-sandpit-omnigent"
+
+
+def test_bootstrap_creates_target_schema_before_functions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "bootstrap_schema_order",
+        ROOT / "scripts" / "bootstrap_resources.py",
+    )
+    statements: list[str] = []
+    monkeypatch.setattr(
+        module,
+        "_execute",
+        lambda _client, _warehouse, statement: statements.append(statement) or {},
+    )
+
+    module.create_uc_functions(
+        object(),
+        "warehouse",
+        "catalog_name",
+        "dev_agent_cicd",
+        "dev_estimate_project_cost",
+        "dev_current_utc_timestamp",
+    )
+
+    assert statements[0].strip().startswith(
+        "CREATE SCHEMA IF NOT EXISTS `catalog_name`.`dev_agent_cicd`",
+    )
+    assert "`catalog_name`.`dev_agent_cicd`.`dev_estimate_project_cost`" in (
+        statements[1]
+    )
+
+
+def test_ci_promotes_dev_to_main_before_production() -> None:
+    workflow = yaml.load(
+        (ROOT / ".github" / "workflows" / "ci-cd.yml").read_text(encoding="utf-8"),
+        Loader=yaml.BaseLoader,
+    )
+
+    assert workflow["on"]["push"]["branches"] == ["dev", "main"]
+    assert workflow["on"]["pull_request"]["branches"] == ["dev", "main"]
+    assert "workflow_dispatch" not in workflow["on"]
+    assert workflow["jobs"]["deploy-dev"]["if"] == (
+        "github.event_name == 'push' && github.ref == 'refs/heads/dev'"
+    )
+    assert workflow["jobs"]["deploy-prod"]["if"] == (
+        "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    )
+    assert "production-promotion" in workflow["jobs"]["deploy-prod"]["needs"]
+    promotion_step = workflow["jobs"]["promotion-source"]["steps"][0]
+    assert promotion_step["env"]["HEAD_BRANCH"] == "${{ github.head_ref }}"
+    assert "HEAD_REPOSITORY" in promotion_step["env"]
 
 
 def test_omnigent_cost_policy_asks_at_each_new_dollar() -> None:

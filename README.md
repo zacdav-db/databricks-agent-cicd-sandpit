@@ -7,84 +7,81 @@ a Declarative Automation Bundle, or DAB) and GitHub Actions.
 It deploys three app definitions per target. With both `dev` and `prod`
 active, the workspace contains six app instances:
 
-1. `sandpit-lc-agent-*`: a FastAPI LangChain agent using a Databricks
+1. `*-sandpit-langchain-agent`: a FastAPI LangChain agent using a Databricks
    Foundation Model endpoint and managed Unity Catalog function MCP servers.
-2. `mcp-sandpit-tools-*`: a custom Streamable HTTP MCP server.
-3. `sandpit-omnigent-*`: an Omnigent server that pre-registers a YAML supervisor
+2. `*-sandpit-mcp-tools`: a custom Streamable HTTP MCP server.
+3. `*-sandpit-omnigent`: an Omnigent server that pre-registers a YAML supervisor
    wired to the first two apps and a managed Unity Catalog function MCP server.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    User["Authenticated user"]
+    Feature["Feature branch"]
+    DevPR["Pull request to dev"]
+    DevGate["Quality gate"]
+    DevBranch["dev branch"]
+    PromotionPR["Internal pull request<br/>dev → main"]
+    PromotionGate["Quality gate<br/>verify source is repository dev"]
+    MainBranch["main branch"]
+    DevDeploy["DAB dev deployment<br/>bootstrap · deploy · smoke"]
+    ProdDeploy["DAB prod deployment<br/>bootstrap · deploy · smoke"]
 
-    subgraph Delivery["CI/CD delivery path"]
-        Git["Pull request or push to main"]
-        CI["GitHub Actions<br/>lint · test · validate"]
-        DevTarget["DAB target: dev<br/>deploy 3 apps · bind UC resources · smoke test"]
-        ProdTarget["DAB target: prod<br/>deploy 3 apps · bind UC resources · smoke test"]
-        Git --> CI --> DevTarget
-        DevTarget -->|"promote same commit after success"| ProdTarget
-    end
+    Feature --> DevPR --> DevGate --> DevBranch --> DevDeploy
+    DevBranch --> PromotionPR --> PromotionGate --> MainBranch --> ProdDeploy
 
-    subgraph Workspace["Databricks workspace"]
-        subgraph OmniApp["App 1: Omnigent"]
-            direction TB
-            Omni["sandpit-omnigent-dev<br/>sandpit-omnigent-prod"]
-            Policy{"Approval policies<br/>subagent spawn · each $1"}
-            Subagent["Omnigent subagent<br/>databricks_agent"]
+    subgraph Workspace["One Databricks workspace and catalog"]
+        Model["Shared Foundation Model API"]
+        Warehouse["Shared SQL warehouse"]
+
+        subgraph Dev["dev prefix · zacdav_sandpit_catalog.dev_agent_cicd"]
+            DevOmni["App 1<br/>dev-sandpit-omnigent"]
+            DevMCP["App 2<br/>dev-sandpit-mcp-tools"]
+            DevLC["App 3<br/>dev-sandpit-langchain-agent"]
+            DevManaged["Managed Functions MCP"]
+            DevFunctions["dev_estimate_project_cost<br/>dev_current_utc_timestamp"]
+            DevService["dev_sandpit_langchain_agent<br/>Agent Service + OAuth connection"]
+            DevTraces[("dev_sandpit_agent_cicd<br/>OpenTelemetry trace tables")]
         end
 
-        subgraph MCPApp["App 2: Custom MCP"]
-            MCP["mcp-sandpit-tools-dev<br/>mcp-sandpit-tools-prod<br/>Streamable HTTP · 4 app-native tools"]
-        end
-
-        subgraph LangChainApp["App 3: LangChain"]
-            LangChain["sandpit-lc-agent-dev<br/>sandpit-lc-agent-prod<br/>FastAPI · managed MCP tool calling"]
-        end
-
-        Model["Foundation Model API"]
-        Experiment["MLflow experiment"]
-
-        subgraph UC["Unity Catalog: zacdav_sandpit_catalog.default"]
-            AgentRegistry["Agent Services beta<br/>sandpit_langchain_agent_dev<br/>sandpit_langchain_agent_prod"]
-            AgentConnections["Schema-level OAuth connections<br/>target-specific App URL"]
-            CostTool["UC function<br/>estimate_project_cost"]
-            TimeTool["UC function<br/>current_utc_timestamp"]
-            ManagedMCP["Databricks-managed Functions MCP"]
-            Traces[("OpenTelemetry tables<br/>spans · logs · metrics · annotations")]
+        subgraph Prod["prod prefix · zacdav_sandpit_catalog.prod_agent_cicd"]
+            ProdOmni["App 1<br/>prod-sandpit-omnigent"]
+            ProdMCP["App 2<br/>prod-sandpit-mcp-tools"]
+            ProdLC["App 3<br/>prod-sandpit-langchain-agent"]
+            ProdManaged["Managed Functions MCP"]
+            ProdFunctions["prod_estimate_project_cost<br/>prod_current_utc_timestamp"]
+            ProdService["prod_sandpit_langchain_agent<br/>Agent Service + OAuth connection"]
+            ProdTraces[("prod_sandpit_agent_cicd<br/>OpenTelemetry trace tables")]
         end
     end
 
-    DevTarget --> Omni
-    DevTarget --> MCP
-    DevTarget --> LangChain
-    ProdTarget --> Omni
-    ProdTarget --> MCP
-    ProdTarget --> LangChain
-    CI -->|"idempotent SQL bootstrap"| CostTool
-    CI -->|"idempotent SQL bootstrap"| TimeTool
-    CI -->|"configure trace location"| Experiment
-    DevTarget -->|"DAB script: register inventory"| AgentRegistry
-    ProdTarget -->|"DAB script: register inventory"| AgentRegistry
+    DevDeploy --> DevOmni
+    DevDeploy --> DevMCP
+    DevDeploy --> DevLC
+    ProdDeploy --> ProdOmni
+    ProdDeploy --> ProdMCP
+    ProdDeploy --> ProdLC
 
-    User --> Omni
-    Omni -->|"before delegation or cost checkpoint"| Policy
-    User -->|"approve or reject"| Policy
-    Policy -->|"approved"| Subagent
-    Subagent -->|"invoke_langchain_agent"| MCP
-    Omni -->|"custom MCP tools"| MCP
-    Omni -->|"managed MCP"| ManagedMCP
-    MCP -->|"OAuth app-to-app call"| LangChain
-    LangChain -->|"managed MCP"| ManagedMCP
-    ManagedMCP --> CostTool
-    ManagedMCP --> TimeTool
-    AgentRegistry --> AgentConnections
-    AgentConnections -. "discovery metadata; beta invocation unavailable" .-> LangChain
-    LangChain -->|"ChatDatabricks"| Model
-    LangChain -->|"MLflow autolog"| Experiment
-    Experiment -->|"governed trace storage"| Traces
+    DevOmni -->|"custom tools"| DevMCP
+    DevOmni -->|"UC function tool"| DevManaged
+    DevMCP -->|"invoke agent"| DevLC
+    DevLC -->|"governed tools"| DevManaged
+    DevManaged --> DevFunctions
+    DevService -. "beta inventory" .-> DevLC
+    DevLC --> DevTraces
+
+    ProdOmni -->|"custom tools"| ProdMCP
+    ProdOmni -->|"UC function tool"| ProdManaged
+    ProdMCP -->|"invoke agent"| ProdLC
+    ProdLC -->|"governed tools"| ProdManaged
+    ProdManaged --> ProdFunctions
+    ProdService -. "beta inventory" .-> ProdLC
+    ProdLC --> ProdTraces
+
+    DevLC --> Model
+    ProdLC --> Model
+    DevTraces --> Warehouse
+    ProdTraces --> Warehouse
 ```
 
 ## Unity Catalog mapping
@@ -124,10 +121,13 @@ The workspace does not expose a writable `system.ai.mlflow_traces` table.
 Current Databricks guidance uses an MLflow experiment bound to four governed,
 SQL-queryable Unity Catalog OpenTelemetry tables instead:
 
-- `zacdav_sandpit_catalog.default.sandpit_agent_cicd_otel_annotations`
-- `zacdav_sandpit_catalog.default.sandpit_agent_cicd_otel_logs`
-- `zacdav_sandpit_catalog.default.sandpit_agent_cicd_otel_metrics`
-- `zacdav_sandpit_catalog.default.sandpit_agent_cicd_otel_spans`
+| Target | MLflow experiment | UC schema | Table prefix |
+| --- | --- | --- | --- |
+| dev | `/Shared/dev-sandpit-agent-cicd-traces` | `zacdav_sandpit_catalog.dev_agent_cicd` | `dev_sandpit_agent_cicd_otel_*` |
+| prod | `/Shared/prod-sandpit-agent-cicd-traces` | `zacdav_sandpit_catalog.prod_agent_cicd` | `prod_sandpit_agent_cicd_otel_*` |
+
+Each prefix expands to `annotations`, `logs`, `metrics`, and `spans` tables.
+Nothing in either target binds to the other target's schema.
 
 The LangChain app calls `mlflow.langchain.autolog()`, sets the bundle-bound
 experiment, and discovers both governed tools through managed MCP before
@@ -191,9 +191,9 @@ Deploy and run all checks:
 bash scripts/deploy_local.sh dev
 ```
 
-The bootstrap step is idempotent. It creates or updates both UC functions and
-upserts the MLflow experiment with its Unity Catalog trace location before the
-bundle adds app resource bindings.
+The bootstrap step is idempotent. It creates the selected target's schema,
+creates or updates its two UC functions, and upserts its MLflow experiment
+before the bundle adds target-scoped App resource bindings.
 
 ## GitHub Actions
 
@@ -201,15 +201,22 @@ The workflow in [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml)
 uses a pinned `uv` release and its dependency cache for fast, reproducible
 environment creation:
 
-1. Lints, tests, and parses the Omnigent YAML on every pull request.
-2. Bootstraps the trace tables and two UC function tools on `main`.
-3. Validates and deploys the `dev` bundle target, starts its three apps, and
-   uses the DAB script to reconcile its beta UC Agent Service before running
-   the complete smoke test.
-4. Promotes the same commit to the `prod` target only after development
-   succeeds, then starts and smoke-tests the three production apps.
+1. A feature pull request targets `dev` and must pass the quality gate.
+2. A push to `dev` bootstraps only `dev_agent_cicd`, deploys only the three
+   `dev-` Apps, reconciles the dev Agent Service, and runs the full smoke test.
+3. Production requires an internal pull request from the repository's `dev`
+   branch to `main`. A dedicated check rejects every other source branch,
+   including a fork branch also named `dev`.
+4. After that pull request merges, the `main` push is checked against its
+   associated merged promotion before CI bootstraps and deploys only `prod`.
 
-The `production` GitHub environment needs:
+There is no manual-dispatch production path. Repository protection requires a
+pull request and the named checks on both branches, blocks force pushes and
+deletion, and applies to administrators. `dev` is the repository's default
+branch, so ordinary changes naturally enter the development environment first.
+
+The `development` and `production` GitHub environments use the same
+repository-level sandpit credentials for now:
 
 - Variable `DATABRICKS_HOST`
 - Secret `DATABRICKS_CLIENT_ID`
@@ -223,12 +230,10 @@ the deployment principal is acceptable for this isolated proof; production
 should provision a dedicated, non-admin agent-caller principal and rotate its
 connection secret independently.
 
-Both targets currently use the same Databricks workspace, catalog, warehouse,
-MLflow experiment, and UC functions. Bundle target suffixes, Agent Service
-names, connections, and root paths keep target-specific deployment state
-separate. The two GitHub jobs also share the existing `production` environment
-credentials for this sandpit; they can be mapped to separate workspaces and
-GitHub environments later without changing the app definitions.
+Both targets use the same Databricks workspace, catalog, warehouse, and model
+endpoint. They do not share schemas, functions, MLflow experiments, trace
+tables, App names, Agent Services, connections, or bundle root paths. Every
+target-specific resource uses an explicit `dev` or `prod` prefix.
 
 The workspace IP ACL rejects ephemeral GitHub-hosted addresses, so only the
 two deployment jobs use a repository-scoped, `sandpit-deploy` self-hosted
@@ -238,6 +243,11 @@ machine and has Homebrew Python 3.12 available as `python3.12`. The hosted test
 job publishes a one-day macOS wheelhouse artifact, allowing the
 network-restricted deploy runner to install its small deployment dependency set
 without reaching PyPI.
+
+The Databricks Apps run on Databricks' Linux runtime. Only the CI deployment
+client currently runs on macOS because that is the sole ACL-authorized
+self-hosted runner. When an authorized Linux runner is registered, change the
+two `runs-on` labels and wheelhouse platform together.
 
 For this isolated proof, the CI service principal is a workspace administrator
 so it can idempotently bootstrap governed resources. A production rollout
@@ -251,9 +261,9 @@ databricks bundle validate -t dev --var experiment_id=<id>
 databricks bundle deploy -t dev --var experiment_id=<id>
 databricks bundle run register_uc_agent -t dev --var experiment_id=<id>
 databricks bundle run smoke_test -t dev --var experiment_id=<id>
-databricks apps logs sandpit-lc-agent-dev -p sandpit
-databricks apps logs mcp-sandpit-tools-dev -p sandpit
-databricks apps logs sandpit-omnigent-dev -p sandpit
+databricks apps logs dev-sandpit-langchain-agent -p sandpit
+databricks apps logs dev-sandpit-mcp-tools -p sandpit
+databricks apps logs dev-sandpit-omnigent -p sandpit
 ```
 
 ## Main source files

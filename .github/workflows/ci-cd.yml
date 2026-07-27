@@ -2,19 +2,59 @@ name: Test and deploy
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
   pull_request:
-  workflow_dispatch:
+    branches: [dev, main]
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
-  group: sandpit-agent-cicd
+  group: sandpit-agent-cicd-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  promotion-source:
+    name: Promotion source is repository dev
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require an internal dev to main promotion
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          test "${BASE_BRANCH}" = "main"
+          test "${HEAD_BRANCH}" = "dev"
+          test "${HEAD_REPOSITORY}" = "${REPOSITORY}"
+
+  production-promotion:
+    name: Production commit came from dev
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the commit is associated with a merged dev promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          promotion_count="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+              --jq '[.[] | select(
+                .merged_at != null and
+                .base.ref == "main" and
+                .head.ref == "dev" and
+                .head.repo.full_name == .base.repo.full_name
+              )] | length'
+          )"
+          test "${promotion_count}" -gt 0
+
   test:
+    name: Quality gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,7 +80,18 @@ jobs:
         run: pytest
       - name: Validate Omnigent YAML
         run: python scripts/validate_omnigent.py
-      - name: Build macOS deploy wheelhouse
+
+  package-deployment:
+    name: Package deployment dependencies
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Build wheelhouse for the authorized deployment runner
         run: >-
           python -m pip download
           --dest deploy-wheelhouse
@@ -59,15 +110,12 @@ jobs:
           retention-days: 1
 
   deploy-dev:
-    if: github.event_name != 'pull_request'
-    needs: test
     name: Deploy development
-    # The sandpit workspace IP ACL rejects ephemeral GitHub-hosted addresses.
-    # This runner is repository-scoped and uses an already-authorized network.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    needs: [test, package-deployment]
+    # The workspace IP ACL rejects ephemeral GitHub-hosted addresses.
     runs-on: [self-hosted, macOS, ARM64, sandpit-deploy]
-    environment: production
-    outputs:
-      experiment_id: ${{ steps.bootstrap.outputs.experiment_id }}
+    environment: development
     env:
       DATABRICKS_AUTH_TYPE: oauth-m2m
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
@@ -94,22 +142,15 @@ jobs:
             --no-index \
             --find-links deploy-wheelhouse \
             -r requirements-deploy.txt
-      - name: Bootstrap trace tables and UC functions
-        id: bootstrap
-        run: >-
-          .deploy-venv/bin/python scripts/bootstrap_resources.py
-          --github-output "$GITHUB_OUTPUT"
       - name: Deploy and verify development
         env:
           PYTHON_BIN: .deploy-venv/bin/python
-        run: >-
-          scripts/deploy_target.sh dev
-          ${{ steps.bootstrap.outputs.experiment_id }}
+        run: scripts/deploy_target.sh dev
 
   deploy-prod:
-    if: github.event_name != 'pull_request'
-    needs: [test, deploy-dev]
-    name: Promote to production
+    name: Deploy production
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, package-deployment, production-promotion]
     runs-on: [self-hosted, macOS, ARM64, sandpit-deploy]
     environment: production
     env:
@@ -141,6 +182,4 @@ jobs:
       - name: Deploy and verify production
         env:
           PYTHON_BIN: .deploy-venv/bin/python
-        run: >-
-          scripts/deploy_target.sh prod
-          ${{ needs.deploy-dev.outputs.experiment_id }}
+        run: scripts/deploy_target.sh prod

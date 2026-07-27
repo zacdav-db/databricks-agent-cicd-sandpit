@@ -11,12 +11,6 @@ if [[ ! -x "${python_bin}" ]]; then
   exit 1
 fi
 
-bootstrap_json="$(
-  "${python_bin}" scripts/bootstrap_resources.py \
-    --profile "${profile}"
-)"
-experiment_id="$(jq -r '.experiment_id' <<<"${bootstrap_json}")"
-
 DATABRICKS_CONFIG_PROFILE="${profile}" \
 PYTHON_BIN="${python_bin}" \
-  scripts/deploy_target.sh "${target}" "${experiment_id}"
+  scripts/deploy_target.sh "${target}"
