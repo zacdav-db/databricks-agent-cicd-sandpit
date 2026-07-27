@@ -4,6 +4,7 @@ set -euo pipefail
 target="${1:?Usage: deploy_target.sh <dev|prod> <experiment-id>}"
 experiment_id="${2:?Usage: deploy_target.sh <dev|prod> <experiment-id>}"
 python_bin="${PYTHON_BIN:-python}"
+export PYTHON_BIN="${python_bin}"
 
 if [[ "${target}" != "dev" && "${target}" != "prod" ]]; then
   echo "Target must be dev or prod." >&2
@@ -28,15 +29,16 @@ databricks bundle deploy \
   --auto-approve \
   --force-lock
 
-for app in mcp_server langchain_agent omnigent; do
+for app in mcp_server langchain_agent; do
   printf 'Starting %s in %s\n' "${app}" "${target}"
   databricks bundle run "${app}" "${bundle_args[@]}"
 done
 
-smoke_args=(--target "${target}")
-if [[ -n "${DATABRICKS_CONFIG_PROFILE:-}" ]]; then
-  smoke_args+=(--profile "${DATABRICKS_CONFIG_PROFILE}")
-fi
+printf 'Registering the %s agent in Unity Catalog\n' "${target}"
+databricks bundle run register_uc_agent "${bundle_args[@]}"
+
+printf 'Starting omnigent in %s\n' "${target}"
+databricks bundle run omnigent "${bundle_args[@]}"
 
 printf 'Smoke testing %s\n' "${target}"
-"${python_bin}" scripts/smoke_test.py "${smoke_args[@]}"
+databricks bundle run smoke_test "${bundle_args[@]}"

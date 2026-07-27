@@ -41,6 +41,10 @@ resources:
             value_from: llm
           - name: DEPLOYMENT_ENV
             value: ${bundle.target}
+          - name: UC_COST_FUNCTION_FULL_NAME
+            value_from: project_cost_function
+          - name: UC_TIME_FUNCTION_FULL_NAME
+            value_from: current_time_function
       resources:
         - name: llm
           serving_endpoint:
@@ -94,6 +98,16 @@ resources:
             securable_full_name: ${var.catalog}.${var.schema}.${var.trace_table_prefix}_otel_spans
             securable_type: TABLE
             permission: MODIFY
+        - name: project_cost_function
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.uc_function_name}
+            securable_type: FUNCTION
+            permission: EXECUTE
+        - name: current_time_function
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.uc_time_function_name}
+            securable_type: FUNCTION
+            permission: EXECUTE
       permissions:
         - level: CAN_USE
           group_name: users

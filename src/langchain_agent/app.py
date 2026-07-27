@@ -41,9 +41,9 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/invocations", response_model=InvocationResponse)
-def invoke(request: InvocationRequest) -> InvocationResponse:
+async def invoke(request: InvocationRequest) -> InvocationResponse:
     try:
-        output, trace_id = invoke_agent(request.input)
+        output, trace_id = await invoke_agent(request.input)
         return InvocationResponse(output=output, trace_id=trace_id)
     except Exception as exc:
         logger.exception("Agent invocation failed.")

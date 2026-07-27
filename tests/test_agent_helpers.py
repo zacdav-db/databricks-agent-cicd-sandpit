@@ -18,18 +18,104 @@ def _load(name: str, path: Path):
     return module
 
 
-def test_langchain_cost_tool() -> None:
+def test_langchain_managed_function_url() -> None:
     module = _load("langchain_agent", ROOT / "src" / "langchain_agent" / "agent.py")
-    assert module.estimate_delivery_cost.invoke(
-        {"hours": 8, "hourly_rate": 125, "contingency_percent": 10},
-    ) == 1100
+    assert module._function_mcp_url(
+        "https://workspace.example/",
+        "catalog_name.schema_name.estimate_project_cost",
+    ) == (
+        "https://workspace.example/api/2.0/mcp/functions/"
+        "catalog_name/schema_name/estimate_project_cost"
+    )
+    with pytest.raises(ValueError, match="catalog.schema.function"):
+        module._function_mcp_url("https://workspace.example", "not.fully_qualified")
 
 
-def test_mcp_cost_helper() -> None:
-    module = _load("mcp_server", ROOT / "src" / "mcp_server" / "server.py")
-    assert module._delivery_cost(8, 125, 10) == 1100
-    with pytest.raises(ValueError, match="non-negative"):
-        module._delivery_cost(-1, 125, 10)
+def test_agent_service_inventory_names_and_connection() -> None:
+    module = _load(
+        "register_uc_agent",
+        ROOT / "scripts" / "register_uc_agent.py",
+    )
+    assert module._inventory_names("prod") == (
+        "sandpit-lc-agent-prod",
+        "sandpit_langchain_agent_prod",
+        "sandpit_langchain_agent_prod_connection",
+    )
+    options = module._connection_options(
+        "https://agent.example/",
+        "https://workspace.example/",
+        "client-id",
+        "client-secret",
+    )
+    assert options["host"] == "https://agent.example"
+    assert options["token_endpoint"] == "https://workspace.example/oidc/v1/token"
+    assert options["oauth_scope"] == "all-apis"
+
+
+def test_uc_registration_extends_the_sdk_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "register_uc_agent_sdk",
+        ROOT / "scripts" / "register_uc_agent.py",
+    )
+
+    class FakeNotFound(Exception):
+        pass
+
+    class FakeConnections:
+        def get(self, _name: str) -> None:
+            raise FakeNotFound
+
+    class FakeApiClient:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, dict[str, object]]] = []
+
+        def do(self, method: str, path: str, **kwargs: object) -> dict[str, object]:
+            self.calls.append((method, path, kwargs))
+            if method == "GET":
+                raise FakeNotFound
+            return {}
+
+    class FakeWorkspaceClient:
+        connections = FakeConnections()
+        api_client = FakeApiClient()
+        config = type("Config", (), {"host": "https://workspace.example"})()
+
+    monkeypatch.setattr(module, "NotFound", FakeNotFound)
+    monkeypatch.setenv("DATABRICKS_CLIENT_ID", "client-id")
+    monkeypatch.setenv("DATABRICKS_CLIENT_SECRET", "client-secret")
+    client = FakeWorkspaceClient()
+
+    connection = module._upsert_connection(
+        client,
+        catalog="catalog_name",
+        schema="schema_name",
+        connection_name="agent_connection",
+        app_url="https://agent.example",
+    )
+    service = module._upsert_agent_service(
+        client,
+        catalog="catalog_name",
+        schema="schema_name",
+        service_name="agent_service",
+        connection_full_name=connection,
+        target="dev",
+    )
+
+    assert connection == "catalog_name.schema_name.agent_connection"
+    assert service == "catalog_name.schema_name.agent_service"
+    connection_create = client.api_client.calls[0]
+    assert connection_create[:2] == (
+        "POST",
+        "/api/2.1/unity-catalog/connections",
+    )
+    assert connection_create[2]["body"]["parent"] == (
+        "schemas/catalog_name.schema_name"
+    )
+    assert client.api_client.calls[2][2]["query"]["agent_service_id"] == (
+        "agent_service"
+    )
 
 
 def test_omnigent_cost_policy_asks_at_each_new_dollar() -> None:

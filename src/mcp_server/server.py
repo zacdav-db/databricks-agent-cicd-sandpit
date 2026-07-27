@@ -6,8 +6,8 @@ import os
 from functools import lru_cache
 from typing import Any
 
-import requests
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.core import Config
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP(
@@ -16,12 +16,6 @@ mcp = FastMCP(
     port=int(os.getenv("DATABRICKS_APP_PORT", "8000")),
     stateless_http=True,
 )
-
-
-def _delivery_cost(hours: float, hourly_rate: float, contingency_percent: float) -> float:
-    if min(hours, hourly_rate, contingency_percent) < 0:
-        raise ValueError("Cost inputs must be non-negative.")
-    return round(hours * hourly_rate * (1 + contingency_percent / 100), 2)
 
 
 @lru_cache(maxsize=1)
@@ -46,16 +40,6 @@ def uppercase(text: str) -> str:
 
 
 @mcp.tool()
-def estimate_delivery_cost(
-    hours: float,
-    hourly_rate: float,
-    contingency_percent: float = 10.0,
-) -> float:
-    """Estimate delivery cost from hours, hourly rate, and contingency percentage."""
-    return _delivery_cost(hours, hourly_rate, contingency_percent)
-
-
-@mcp.tool()
 def get_current_identity() -> str:
     """Return the Databricks identity used by this app."""
     identity = WorkspaceClient().current_user.me()
@@ -65,17 +49,15 @@ def get_current_identity() -> str:
 @mcp.tool()
 def invoke_langchain_agent(message: str) -> dict[str, Any]:
     """Call the bundle-deployed LangChain agent and return its answer and trace ID."""
-    client = WorkspaceClient()
-    headers = client.config.authenticate()
-    headers["Content-Type"] = "application/json"
-    response = requests.post(
-        f"{_langchain_agent_url()}/api/invocations",
-        headers=headers,
-        json={"input": message},
-        timeout=180,
+    client = WorkspaceClient(config=Config(http_timeout_seconds=180))
+    payload = client.api_client.do(
+        "POST",
+        url=f"{_langchain_agent_url()}/api/invocations",
+        body={"input": message},
     )
-    response.raise_for_status()
-    return response.json()
+    if not isinstance(payload, dict):
+        raise RuntimeError("LangChain Agent returned a non-object response.")
+    return payload
 
 
 if __name__ == "__main__":

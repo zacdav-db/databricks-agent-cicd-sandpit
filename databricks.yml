@@ -1,5 +1,6 @@
 bundle:
   name: sandpit-agent-cicd
+  databricks_cli_version: ">= 1.7.0, < 2.0.0"
 
 include:
   - resources/*.yml
@@ -23,8 +24,23 @@ variables:
     description: Prefix for the Unity Catalog OpenTelemetry trace tables.
     default: sandpit_agent_cicd
   uc_function_name:
-    description: Unity Catalog function exposed to Omnigent.
+    description: Unity Catalog cost function exposed through managed MCP.
     default: estimate_project_cost
+  uc_time_function_name:
+    description: Unity Catalog time function exposed through managed MCP.
+    default: current_utc_timestamp
+
+scripts:
+  register_uc_agent:
+    content: >-
+      $PYTHON_BIN scripts/register_uc_agent.py
+      --target $DATABRICKS_BUNDLE_TARGET
+      --catalog zacdav_sandpit_catalog
+      --schema default
+  smoke_test:
+    content: >-
+      $PYTHON_BIN scripts/smoke_test.py
+      --target $DATABRICKS_BUNDLE_TARGET
 
 targets:
   dev:
