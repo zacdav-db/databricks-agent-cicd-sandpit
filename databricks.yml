@@ -35,8 +35,6 @@ scripts:
     content: >-
       $PYTHON_BIN scripts/register_uc_agent.py
       --target $DATABRICKS_BUNDLE_TARGET
-      --catalog zacdav_sandpit_catalog
-      --schema default
   smoke_test:
     content: >-
       $PYTHON_BIN scripts/smoke_test.py

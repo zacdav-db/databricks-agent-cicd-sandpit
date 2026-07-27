@@ -111,13 +111,28 @@ def create_trace_experiment(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile")
-    parser.add_argument("--catalog", default="zacdav_sandpit_catalog")
-    parser.add_argument("--schema", default="default")
-    parser.add_argument("--warehouse-id", default="f7a871ffa2a9ab80")
-    parser.add_argument("--function-name", default="estimate_project_cost")
-    parser.add_argument("--time-function-name", default="current_utc_timestamp")
+    parser.add_argument(
+        "--catalog",
+        default=os.getenv("UC_CATALOG", "zacdav_sandpit_catalog"),
+    )
+    parser.add_argument("--schema", default=os.getenv("UC_SCHEMA", "default"))
+    parser.add_argument(
+        "--warehouse-id",
+        default=os.getenv("DATABRICKS_WAREHOUSE_ID", "f7a871ffa2a9ab80"),
+    )
+    parser.add_argument(
+        "--function-name",
+        default=os.getenv("UC_COST_FUNCTION", "estimate_project_cost"),
+    )
+    parser.add_argument(
+        "--time-function-name",
+        default=os.getenv("UC_TIME_FUNCTION", "current_utc_timestamp"),
+    )
     parser.add_argument("--experiment-name", default="/Shared/sandpit-agent-cicd-traces")
-    parser.add_argument("--table-prefix", default="sandpit_agent_cicd")
+    parser.add_argument(
+        "--table-prefix",
+        default=os.getenv("UC_TRACE_TABLE_PREFIX", "sandpit_agent_cicd"),
+    )
     parser.add_argument("--github-output", type=Path)
     return parser.parse_args()
 

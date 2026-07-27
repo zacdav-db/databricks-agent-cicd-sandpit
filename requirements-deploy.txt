@@ -1,2 +1,2 @@
-databricks-sdk>=0.72,<1
+databricks-sdk==0.122.0
 mlflow-skinny>=3.14.0,<4

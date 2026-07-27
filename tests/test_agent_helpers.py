@@ -112,8 +112,14 @@ def test_uc_registration_extends_the_sdk_client(
         pass
 
     class FakeConnections:
+        def __init__(self) -> None:
+            self.created: dict[str, object] | None = None
+
         def get(self, _name: str) -> None:
             raise FakeNotFound
+
+        def create(self, **kwargs: object) -> None:
+            self.created = kwargs
 
     class FakeApiClient:
         def __init__(self) -> None:
@@ -156,20 +162,29 @@ def test_uc_registration_extends_the_sdk_client(
         connection_full_name=connection,
         target="dev",
     )
+    module._grant_metadata(client, service, "owner@example.com")
 
     assert connection == "catalog_name.schema_name.agent_connection"
     assert service == "catalog_name.schema_name.agent_service"
-    connection_create = client.api_client.calls[0]
-    assert connection_create[:2] == (
-        "POST",
-        "/api/2.1/unity-catalog/connections",
-    )
-    assert connection_create[2]["body"]["parent"] == (
+    assert client.connections.created["parent"] == (
         "schemas/catalog_name.schema_name"
     )
-    assert client.api_client.calls[2][2]["query"]["agent_service_id"] == (
+    assert client.connections.created["options"]["client_id"] == "client-id"
+    assert client.api_client.calls[1][2]["query"]["agent_service_id"] == (
         "agent_service"
     )
+    grant = client.api_client.calls[2]
+    assert grant[:2] == (
+        "PATCH",
+        (
+            "/api/2.1/unity-catalog/permissions/AGENT_SERVICE/"
+            "catalog_name.schema_name.agent_service"
+        ),
+    )
+    assert grant[2]["body"]["changes"][0] == {
+        "principal": "owner@example.com",
+        "add": ["EXECUTE", "READ_METADATA"],
+    }
 
 
 def test_omnigent_cost_policy_asks_at_each_new_dollar() -> None:

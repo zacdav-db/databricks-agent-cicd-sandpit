@@ -5,6 +5,11 @@ target="${1:?Usage: deploy_target.sh <dev|prod> <experiment-id>}"
 experiment_id="${2:?Usage: deploy_target.sh <dev|prod> <experiment-id>}"
 python_bin="${PYTHON_BIN:-python}"
 export PYTHON_BIN="${python_bin}"
+export UC_CATALOG="${UC_CATALOG:-zacdav_sandpit_catalog}"
+export UC_SCHEMA="${UC_SCHEMA:-default}"
+export UC_COST_FUNCTION="${UC_COST_FUNCTION:-estimate_project_cost}"
+export UC_TIME_FUNCTION="${UC_TIME_FUNCTION:-current_utc_timestamp}"
+export UC_TRACE_TABLE_PREFIX="${UC_TRACE_TABLE_PREFIX:-sandpit_agent_cicd}"
 
 if [[ "${target}" != "dev" && "${target}" != "prod" ]]; then
   echo "Target must be dev or prod." >&2
@@ -18,6 +23,11 @@ fi
 bundle_args=(
   -t "${target}"
   --var "experiment_id=${experiment_id}"
+  --var "catalog=${UC_CATALOG}"
+  --var "schema=${UC_SCHEMA}"
+  --var "uc_function_name=${UC_COST_FUNCTION}"
+  --var "uc_time_function_name=${UC_TIME_FUNCTION}"
+  --var "trace_table_prefix=${UC_TRACE_TABLE_PREFIX}"
 )
 
 printf 'Validating %s bundle\n' "${target}"

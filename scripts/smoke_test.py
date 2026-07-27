@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
+from datetime import datetime
 from typing import Any
 
 from databricks.sdk import WorkspaceClient
@@ -26,6 +28,47 @@ def _api_json(
     if not isinstance(payload, dict):
         raise RuntimeError(f"{method} {url} returned a non-object response.")
     return payload
+
+
+def _mcp_json_payloads(result: dict[str, Any]) -> list[Any]:
+    payloads: list[Any] = []
+    structured = result.get("structuredContent")
+    if structured is not None:
+        payloads.append(structured)
+    for item in result.get("content", []):
+        if item.get("type") != "text":
+            continue
+        try:
+            payloads.append(json.loads(item.get("text", "")))
+        except json.JSONDecodeError:
+            continue
+    return payloads
+
+
+def _mcp_first_cell(result: dict[str, Any]) -> Any:
+    for payload in _mcp_json_payloads(result):
+        candidate = payload.get("result", payload) if isinstance(payload, dict) else payload
+        rows = candidate.get("rows") if isinstance(candidate, dict) else None
+        if rows and rows[0]:
+            return rows[0][0]
+    raise RuntimeError(f"Managed MCP result did not contain a row: {result}")
+
+
+def _find_nonempty_string(value: Any, key: str) -> str | None:
+    if isinstance(value, dict):
+        candidate = value.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate
+        for child in value.values():
+            found = _find_nonempty_string(child, key)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_nonempty_string(child, key)
+            if found:
+                return found
+    return None
 
 
 def _wait_for_app(client: WorkspaceClient, name: str, timeout: int = 900) -> str:
@@ -75,7 +118,7 @@ def _mcp_request(
         raise RuntimeError(f"MCP request {method} returned no response body.")
     with response["contents"] as contents:
         response_text = contents.read().decode("utf-8")
-    if "text/event-stream" in response.get("Content-Type", ""):
+    if "text/event-stream" in (response.get("Content-Type") or ""):
         messages = [
             json.loads(line.removeprefix("data:").strip())
             for line in response_text.splitlines()
@@ -96,18 +139,26 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile")
     parser.add_argument("--target", default="prod")
-    parser.add_argument("--warehouse-id", default="f7a871ffa2a9ab80")
+    catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
+    schema = os.getenv("UC_SCHEMA", "default")
+    trace_prefix = os.getenv("UC_TRACE_TABLE_PREFIX", "sandpit_agent_cicd")
+    cost_function = os.getenv("UC_COST_FUNCTION", "estimate_project_cost")
+    time_function = os.getenv("UC_TIME_FUNCTION", "current_utc_timestamp")
+    parser.add_argument(
+        "--warehouse-id",
+        default=os.getenv("DATABRICKS_WAREHOUSE_ID", "f7a871ffa2a9ab80"),
+    )
     parser.add_argument(
         "--trace-table",
-        default="zacdav_sandpit_catalog.default.sandpit_agent_cicd_otel_spans",
+        default=f"{catalog}.{schema}.{trace_prefix}_otel_spans",
     )
     parser.add_argument(
         "--uc-function",
-        default="zacdav_sandpit_catalog.default.estimate_project_cost",
+        default=f"{catalog}.{schema}.{cost_function}",
     )
     parser.add_argument(
         "--uc-time-function",
-        default="zacdav_sandpit_catalog.default.current_utc_timestamp",
+        default=f"{catalog}.{schema}.{time_function}",
     )
     return parser.parse_args()
 
@@ -183,7 +234,15 @@ def main() -> None:
             },
         },
     )
-    if "trace_id" not in json.dumps(bridge_result):
+    bridge_trace_id = next(
+        (
+            trace_id
+            for payload in _mcp_json_payloads(bridge_result)
+            if (trace_id := _find_nonempty_string(payload, "trace_id"))
+        ),
+        None,
+    )
+    if not bridge_trace_id:
         raise RuntimeError(f"LangChain bridge returned no trace ID: {bridge_result}")
     _progress(f"Custom MCP exposed and executed all {len(tool_names)} tools.")
 
@@ -236,12 +295,22 @@ def main() -> None:
             "tools/call",
             {"name": expected_tool, "arguments": arguments},
         )
-    if "1100" not in json.dumps(managed_results[args.uc_function]):
+    cost_value = _mcp_first_cell(managed_results[args.uc_function])
+    if float(cost_value) != 1100.0:
         raise RuntimeError(
             f"Managed MCP returned an unexpected cost: {managed_results[args.uc_function]}",
         )
-    if not json.dumps(managed_results[args.uc_time_function]).strip():
-        raise RuntimeError("Managed MCP returned an empty current UTC timestamp.")
+    time_value = str(_mcp_first_cell(managed_results[args.uc_time_function]))
+    try:
+        parsed_time = datetime.fromisoformat(time_value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Managed MCP returned an invalid UTC timestamp: {time_value!r}",
+        ) from exc
+    if parsed_time.tzinfo is None or not time_value.endswith("Z"):
+        raise RuntimeError(
+            f"Managed MCP returned a non-UTC timestamp: {time_value!r}",
+        )
     _progress(
         "Databricks managed MCP listed and executed both Unity Catalog functions.",
     )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from urllib.parse import quote, urlsplit
 
 from databricks.sdk import WorkspaceClient
@@ -71,21 +72,15 @@ def _upsert_connection(
         client_secret,
     )
     if not connection_exists:
-        # Schema-scoped connections are newer than the current generated SDK
-        # method, which does not yet expose the `parent` request field.
-        workspace_client.api_client.do(
-            "POST",
-            "/api/2.1/unity-catalog/connections",
-            body={
-                "name": connection_name,
-                "parent": f"schemas/{catalog}.{schema}",
-                "connection_type": ConnectionType.HTTP.value,
-                "comment": (
-                    "DAB-managed OAuth connection to the sandpit LangChain Agent App. "
-                    "Used by the Unity Catalog Agent Service beta."
-                ),
-                "options": options,
-            },
+        workspace_client.connections.create(
+            name=connection_name,
+            parent=f"schemas/{catalog}.{schema}",
+            connection_type=ConnectionType.HTTP,
+            comment=(
+                "DAB-managed OAuth connection to the sandpit LangChain Agent App. "
+                "Used by the Unity Catalog Agent Service beta."
+            ),
+            options=options,
         )
     else:
         workspace_client.connections.update(name=full_name, options=options)
@@ -176,8 +171,11 @@ def _grant_metadata(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", required=True, choices=("dev", "prod"))
-    parser.add_argument("--catalog", required=True)
-    parser.add_argument("--schema", required=True)
+    parser.add_argument(
+        "--catalog",
+        default=os.getenv("UC_CATALOG", "zacdav_sandpit_catalog"),
+    )
+    parser.add_argument("--schema", default=os.getenv("UC_SCHEMA", "default"))
     parser.add_argument(
         "--metadata-principal",
         default="zachary.davies@databricks.com",

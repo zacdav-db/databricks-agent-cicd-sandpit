@@ -1,4 +1,4 @@
-databricks-sdk>=0.72,<1
+databricks-sdk==0.122.0
 mlflow[databricks]>=3.14.0,<4
 omnigent[databricks]==0.6.0
 pytest>=8.3,<9
