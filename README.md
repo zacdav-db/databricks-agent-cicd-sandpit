@@ -118,7 +118,8 @@ used with OAuth M2M. No PAT, local profile, or secret is committed.
 The workspace IP ACL rejects ephemeral GitHub-hosted addresses, so only the
 deploy job uses a repository-scoped, `sandpit-deploy` self-hosted runner on an
 authorized network. Pull-request tests remain on GitHub-hosted runners. The
-runner is installed as a macOS launch service on the sandpit machine.
+runner is installed as a macOS launch service on the sandpit machine and has
+Homebrew Python 3.12 available as `python3.12`.
 
 For this isolated proof, the CI service principal is a workspace administrator
 so it can idempotently bootstrap governed resources. A production rollout

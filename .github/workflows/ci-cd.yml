@@ -50,16 +50,16 @@ jobs:
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
       - uses: databricks/setup-cli@main
       - name: Install deployment dependencies
-        run: python -m pip install -r requirements-ci.txt
+        run: |
+          python3.12 -m venv .deploy-venv
+          .deploy-venv/bin/pip install -r requirements-ci.txt
       - name: Bootstrap trace tables and UC function
         id: bootstrap
-        run: python scripts/bootstrap_resources.py --github-output "$GITHUB_OUTPUT"
+        run: >-
+          .deploy-venv/bin/python scripts/bootstrap_resources.py
+          --github-output "$GITHUB_OUTPUT"
       - name: Validate bundle
         run: >-
           databricks bundle validate -t prod
@@ -81,4 +81,4 @@ jobs:
           databricks bundle run omnigent -t prod
           --var experiment_id=${{ steps.bootstrap.outputs.experiment_id }}
       - name: End-to-end smoke test
-        run: python scripts/smoke_test.py --target prod
+        run: .deploy-venv/bin/python scripts/smoke_test.py --target prod
