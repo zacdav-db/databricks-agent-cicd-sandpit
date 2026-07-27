@@ -274,6 +274,10 @@ def test_bootstrap_creates_target_schema_before_functions(
     assert "`catalog_name`.`dev_agent_cicd`.`dev_estimate_project_cost`" in (
         statements[1]
     )
+    assert (
+        "CONVERT_TIMEZONE(CURRENT_TIMEZONE(), 'UTC', CURRENT_TIMESTAMP())"
+        in statements[2]
+    )
 
 
 def test_ci_promotes_dev_to_main_before_production() -> None:
