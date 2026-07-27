@@ -6,8 +6,8 @@ import configparser
 import json
 import os
 import pathlib
-import signal
 import shutil
+import signal
 import subprocess
 import tempfile
 import time

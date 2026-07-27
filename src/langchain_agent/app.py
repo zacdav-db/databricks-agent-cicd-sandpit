@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from agent import invoke_agent
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-
-from agent import invoke_agent
 
 app = FastAPI(
     title="Sandpit LangChain Agent",
