@@ -25,11 +25,18 @@ flowchart TB
     end
 
     subgraph Workspace["Databricks workspace"]
-        subgraph Apps["Databricks Apps"]
+        subgraph OmniApp["App 1: sandpit-omnigent-*"]
+            direction TB
             Omni["Omnigent supervisor<br/>YAML-defined custom agent"]
             Policy{"Approval policies<br/>subagent spawn · each $1"}
             Subagent["Omnigent subagent<br/>databricks_agent"]
+        end
+
+        subgraph MCPApp["App 2: mcp-sandpit-tools-*"]
             MCP["Custom MCP server<br/>Streamable HTTP · 5 tools"]
+        end
+
+        subgraph LangChainApp["App 3: sandpit-lc-agent-*"]
             LangChain["LangChain agent<br/>FastAPI · tool calling"]
         end
 
