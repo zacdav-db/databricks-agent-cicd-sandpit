@@ -3,7 +3,8 @@
 This repository is a small, working demonstration of deploying agents and tools
 to Databricks Apps through a Databricks Asset Bundle and GitHub Actions.
 
-It deploys three apps:
+It deploys three app definitions per target. With both `dev` and `prod`
+active, the workspace contains six app instances:
 
 1. `sandpit-lc-agent-*`: a FastAPI LangChain agent using a Databricks
    Foundation Model endpoint.
@@ -20,24 +21,26 @@ flowchart TB
     subgraph Delivery["CI/CD delivery path"]
         Git["Pull request or push to main"]
         CI["GitHub Actions<br/>lint · test · validate"]
-        Bundle["Databricks Asset Bundle<br/>deploy · run · smoke test"]
-        Git --> CI --> Bundle
+        DevTarget["DAB target: dev<br/>deploy 3 apps · smoke test"]
+        ProdTarget["DAB target: prod<br/>deploy 3 apps · smoke test"]
+        Git --> CI --> DevTarget
+        DevTarget -->|"promote same commit after success"| ProdTarget
     end
 
     subgraph Workspace["Databricks workspace"]
-        subgraph OmniApp["App 1: sandpit-omnigent-*"]
+        subgraph OmniApp["App 1: Omnigent"]
             direction TB
-            Omni["Omnigent supervisor<br/>YAML-defined custom agent"]
+            Omni["sandpit-omnigent-dev<br/>sandpit-omnigent-prod"]
             Policy{"Approval policies<br/>subagent spawn · each $1"}
             Subagent["Omnigent subagent<br/>databricks_agent"]
         end
 
-        subgraph MCPApp["App 2: mcp-sandpit-tools-*"]
-            MCP["Custom MCP server<br/>Streamable HTTP · 5 tools"]
+        subgraph MCPApp["App 2: Custom MCP"]
+            MCP["mcp-sandpit-tools-dev<br/>mcp-sandpit-tools-prod<br/>Streamable HTTP · 5 tools"]
         end
 
-        subgraph LangChainApp["App 3: sandpit-lc-agent-*"]
-            LangChain["LangChain agent<br/>FastAPI · tool calling"]
+        subgraph LangChainApp["App 3: LangChain"]
+            LangChain["sandpit-lc-agent-dev<br/>sandpit-lc-agent-prod<br/>FastAPI · tool calling"]
         end
 
         UC["Unity Catalog function<br/>estimate_project_cost"]
@@ -46,9 +49,12 @@ flowchart TB
         Traces[("Unity Catalog OpenTelemetry tables<br/>spans · logs · metrics · annotations")]
     end
 
-    Bundle --> Omni
-    Bundle --> MCP
-    Bundle --> LangChain
+    DevTarget --> Omni
+    DevTarget --> MCP
+    DevTarget --> LangChain
+    ProdTarget --> Omni
+    ProdTarget --> MCP
+    ProdTarget --> LangChain
     CI -->|"idempotent bootstrap"| UC
     CI -->|"configure trace location"| Experiment
 
@@ -143,10 +149,10 @@ The workflow in [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml):
 
 1. Lints, tests, and parses the Omnigent YAML on every pull request.
 2. Bootstraps the trace tables and UC function on `main`.
-3. Validates and deploys the Asset Bundle.
-4. Starts all three apps.
-5. Invokes the agent, lists/calls MCP tools, executes the UC function, checks
-   Omnigent health, and verifies a trace row.
+3. Validates and deploys the `dev` bundle target, starts its three apps, and
+   runs the complete smoke test.
+4. Promotes the same commit to the `prod` target only after development
+   succeeds, then starts and smoke-tests the three production apps.
 
 The `production` GitHub environment needs:
 
@@ -157,13 +163,21 @@ The `production` GitHub environment needs:
 The credentials belong to a dedicated Databricks service principal and are
 used with OAuth M2M. No PAT, local profile, or secret is committed.
 
+Both targets currently use the same Databricks workspace, catalog, warehouse,
+MLflow experiment, and UC function. Bundle target suffixes and root paths keep
+the six app deployments and their deployment state separate. The two GitHub
+jobs also share the existing `production` environment credentials for this
+sandpit; they can be mapped to separate workspaces and GitHub environments
+later without changing the app definitions.
+
 The workspace IP ACL rejects ephemeral GitHub-hosted addresses, so only the
-deploy job uses a repository-scoped, `sandpit-deploy` self-hosted runner on an
-authorized network. Pull-request tests remain on GitHub-hosted runners. The
-runner is installed as a macOS launch service on the sandpit machine and has
-Homebrew Python 3.12 available as `python3.12`. The hosted test job publishes a
-one-day macOS wheelhouse artifact, allowing the network-restricted deploy
-runner to install its small deployment dependency set without reaching PyPI.
+two deployment jobs use a repository-scoped, `sandpit-deploy` self-hosted
+runner on an authorized network. Pull-request tests remain on GitHub-hosted
+runners. The runner is installed as a macOS launch service on the sandpit
+machine and has Homebrew Python 3.12 available as `python3.12`. The hosted test
+job publishes a one-day macOS wheelhouse artifact, allowing the
+network-restricted deploy runner to install its small deployment dependency set
+without reaching PyPI.
 
 For this isolated proof, the CI service principal is a workspace administrator
 so it can idempotently bootstrap governed resources. A production rollout
@@ -190,4 +204,6 @@ databricks apps logs sandpit-omnigent-dev -p sandpit
 - [`src/mcp_server/server.py`](src/mcp_server/server.py): custom MCP tools.
 - [`scripts/bootstrap_resources.py`](scripts/bootstrap_resources.py): ordered,
   idempotent resource bootstrap.
+- [`scripts/deploy_target.sh`](scripts/deploy_target.sh): shared deployment and
+  smoke-test sequence for either bundle target.
 - [`scripts/smoke_test.py`](scripts/smoke_test.py): deployment acceptance test.

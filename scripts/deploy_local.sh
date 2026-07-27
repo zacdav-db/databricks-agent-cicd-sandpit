@@ -17,23 +17,6 @@ bootstrap_json="$(
 )"
 experiment_id="$(jq -r '.experiment_id' <<<"${bootstrap_json}")"
 
-databricks bundle validate \
-  -t "${target}" \
-  --var "experiment_id=${experiment_id}"
-databricks bundle deploy \
-  -t "${target}" \
-  --auto-approve \
-  --var "experiment_id=${experiment_id}"
-databricks bundle run mcp_server \
-  -t "${target}" \
-  --var "experiment_id=${experiment_id}"
-databricks bundle run langchain_agent \
-  -t "${target}" \
-  --var "experiment_id=${experiment_id}"
-databricks bundle run omnigent \
-  -t "${target}" \
-  --var "experiment_id=${experiment_id}"
-
-"${python_bin}" scripts/smoke_test.py \
-  --profile "${profile}" \
-  --target "${target}"
+DATABRICKS_CONFIG_PROFILE="${profile}" \
+PYTHON_BIN="${python_bin}" \
+  scripts/deploy_target.sh "${target}" "${experiment_id}"
