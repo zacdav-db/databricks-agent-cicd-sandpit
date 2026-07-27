@@ -9,7 +9,6 @@ from typing import Any
 
 import requests
 from databricks.sdk import WorkspaceClient
-from databricks_mcp import DatabricksMCPClient
 
 
 def _headers(client: WorkspaceClient) -> dict[str, str]:
@@ -39,6 +38,42 @@ def _execute(client: WorkspaceClient, warehouse_id: str, statement: str) -> dict
     if response.get("status", {}).get("state") != "SUCCEEDED":
         raise RuntimeError(response)
     return response
+
+
+def _mcp_request(
+    server_url: str,
+    headers: dict[str, str],
+    request_id: int,
+    method: str,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    response = requests.post(
+        server_url,
+        headers={**headers, "Accept": "application/json, text/event-stream"},
+        json={
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": method,
+            "params": params,
+        },
+        timeout=180,
+    )
+    response.raise_for_status()
+    if "text/event-stream" in response.headers.get("Content-Type", ""):
+        messages = [
+            json.loads(line.removeprefix("data:").strip())
+            for line in response.text.splitlines()
+            if line.startswith("data:")
+        ]
+        payload = next(
+            (message for message in messages if message.get("id") == request_id),
+            None,
+        )
+    else:
+        payload = response.json()
+    if not payload or "error" in payload:
+        raise RuntimeError(f"MCP request {method} failed: {payload or response.text}")
+    return payload["result"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -85,8 +120,21 @@ def main() -> None:
     if "1100" not in invocation_payload.get("output", "").replace(",", ""):
         raise RuntimeError(f"Agent returned an unexpected estimate: {invocation_payload}")
 
-    mcp_client = DatabricksMCPClient(server_url=f"{mcp_url}/mcp", workspace_client=client)
-    tool_names = {tool.name for tool in mcp_client.list_tools()}
+    mcp_endpoint = f"{mcp_url}/mcp"
+    mcp_headers = _headers(client)
+    _mcp_request(
+        mcp_endpoint,
+        mcp_headers,
+        1,
+        "initialize",
+        {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": {"name": "deployment-smoke-test", "version": "1.0"},
+        },
+    )
+    tools_result = _mcp_request(mcp_endpoint, mcp_headers, 2, "tools/list", {})
+    tool_names = {tool["name"] for tool in tools_result["tools"]}
     required_tools = {
         "health",
         "uppercase",
@@ -96,15 +144,29 @@ def main() -> None:
     }
     if not required_tools.issubset(tool_names):
         raise RuntimeError(f"Missing MCP tools: {required_tools - tool_names}")
-    mcp_result = mcp_client.call_tool("uppercase", {"text": "bundle deployed"})
-    if "BUNDLE DEPLOYED" not in str(mcp_result.content):
-        raise RuntimeError(f"Unexpected MCP result: {mcp_result.content}")
-    bridge_result = mcp_client.call_tool(
-        "invoke_langchain_agent",
-        {"message": "Estimate 5 hours at $200/hour with no contingency."},
+    mcp_result = _mcp_request(
+        mcp_endpoint,
+        mcp_headers,
+        3,
+        "tools/call",
+        {"name": "uppercase", "arguments": {"text": "bundle deployed"}},
     )
-    if "trace_id" not in str(bridge_result.content):
-        raise RuntimeError(f"LangChain bridge returned no trace ID: {bridge_result.content}")
+    if "BUNDLE DEPLOYED" not in json.dumps(mcp_result):
+        raise RuntimeError(f"Unexpected MCP result: {mcp_result}")
+    bridge_result = _mcp_request(
+        mcp_endpoint,
+        mcp_headers,
+        4,
+        "tools/call",
+        {
+            "name": "invoke_langchain_agent",
+            "arguments": {
+                "message": "Estimate 5 hours at $200/hour with no contingency.",
+            },
+        },
+    )
+    if "trace_id" not in json.dumps(bridge_result):
+        raise RuntimeError(f"LangChain bridge returned no trace ID: {bridge_result}")
 
     function_result = _execute(
         client,
@@ -195,8 +257,8 @@ def main() -> None:
                 "agent": invocation_payload,
                 "function": function_result.get("result", {}).get("data_array"),
                 "mcp_tool_count": len(tool_names),
-                "mcp_uppercase": str(mcp_result.content),
-                "mcp_langchain_bridge": str(bridge_result.content),
+                "mcp_uppercase": mcp_result,
+                "mcp_langchain_bridge": bridge_result,
                 "omnigent_policies": sorted(policy_names),
                 "omnigent_online_hosts": len(online_hosts),
                 "omnigent_url": omnigent_url,
