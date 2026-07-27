@@ -1,0 +1,144 @@
+resources:
+  apps:
+    mcp_server:
+      name: mcp-sandpit-tools-${bundle.target}
+      description: Custom Streamable HTTP MCP server deployed by a Databricks Asset Bundle.
+      source_code_path: ../src/mcp_server
+      config:
+        command: ["python", "server.py"]
+        env:
+          - name: LANGCHAIN_AGENT_APP_NAME
+            value_from: langchain_agent_app
+      resources:
+        - name: langchain_agent_app
+          app:
+            name: ${resources.apps.langchain_agent.name}
+            permission: CAN_USE
+      permissions:
+        - level: CAN_USE
+          group_name: users
+
+    langchain_agent:
+      name: sandpit-lc-agent-${bundle.target}
+      description: LangChain tool-calling agent with MLflow traces stored in Unity Catalog.
+      source_code_path: ../src/langchain_agent
+      config:
+        command:
+          - uvicorn
+          - app:app
+          - --host
+          - 0.0.0.0
+          - --port
+          - "8000"
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: databricks
+          - name: MLFLOW_EXPERIMENT_ID
+            value_from: trace_experiment
+          - name: MLFLOW_TRACING_SQL_WAREHOUSE_ID
+            value_from: trace_warehouse
+          - name: MODEL_ENDPOINT
+            value_from: llm
+          - name: DEPLOYMENT_ENV
+            value: ${bundle.target}
+      resources:
+        - name: llm
+          serving_endpoint:
+            name: ${var.model_endpoint}
+            permission: CAN_QUERY
+        - name: trace_experiment
+          experiment:
+            experiment_id: ${var.experiment_id}
+            permission: CAN_EDIT
+        - name: trace_warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: trace_annotations_select
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.trace_table_prefix}_otel_annotations
+            securable_type: TABLE
+            permission: SELECT
+        - name: trace_annotations_modify
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.trace_table_prefix}_otel_annotations
+            securable_type: TABLE
+            permission: MODIFY
+        - name: trace_logs_select
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.trace_table_prefix}_otel_logs
+            securable_type: TABLE
+            permission: SELECT
+        - name: trace_logs_modify
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.trace_table_prefix}_otel_logs
+            securable_type: TABLE
+            permission: MODIFY
+        - name: trace_metrics_select
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.trace_table_prefix}_otel_metrics
+            securable_type: TABLE
+            permission: SELECT
+        - name: trace_metrics_modify
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.trace_table_prefix}_otel_metrics
+            securable_type: TABLE
+            permission: MODIFY
+        - name: trace_spans_select
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.trace_table_prefix}_otel_spans
+            securable_type: TABLE
+            permission: SELECT
+        - name: trace_spans_modify
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.trace_table_prefix}_otel_spans
+            securable_type: TABLE
+            permission: MODIFY
+      permissions:
+        - level: CAN_USE
+          group_name: users
+
+    omnigent:
+      name: sandpit-omnigent-${bundle.target}
+      description: Omnigent server with a pre-registered YAML supervisor agent.
+      source_code_path: ../src/omnigent_app
+      config:
+        command: ["python", "launch.py"]
+        env:
+          - name: MODEL_ENDPOINT
+            value_from: llm
+          - name: DATABRICKS_WAREHOUSE_ID
+            value_from: warehouse
+          - name: UC_FUNCTION_FULL_NAME
+            value_from: project_cost_function
+          - name: LANGCHAIN_AGENT_APP_NAME
+            value_from: langchain_agent_app
+          - name: CUSTOM_MCP_APP_NAME
+            value_from: custom_mcp_app
+          - name: OMNIGENT_HOST_OWNER
+            value: zachary.davies@databricks.com
+      resources:
+        - name: llm
+          serving_endpoint:
+            name: ${var.model_endpoint}
+            permission: CAN_QUERY
+        - name: warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: project_cost_function
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.uc_function_name}
+            securable_type: FUNCTION
+            permission: EXECUTE
+        - name: langchain_agent_app
+          app:
+            name: ${resources.apps.langchain_agent.name}
+            permission: CAN_USE
+        - name: custom_mcp_app
+          app:
+            name: ${resources.apps.mcp_server.name}
+            permission: CAN_USE
+      permissions:
+        - level: CAN_USE
+          group_name: users

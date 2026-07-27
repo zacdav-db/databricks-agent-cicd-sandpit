@@ -1,0 +1,3 @@
+databricks-sdk>=0.72,<1
+mcp>=1.12,<2
+requests>=2.32,<3

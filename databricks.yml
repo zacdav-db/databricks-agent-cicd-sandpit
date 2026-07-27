@@ -1,0 +1,42 @@
+bundle:
+  name: sandpit-agent-cicd
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog used by the demo.
+    default: zacdav_sandpit_catalog
+  schema:
+    description: Unity Catalog schema used by the demo.
+    default: default
+  warehouse_id:
+    description: SQL warehouse used by tracing and Unity Catalog functions.
+    default: f7a871ffa2a9ab80
+  model_endpoint:
+    description: Foundation Model API endpoint used by the agents.
+    default: databricks-claude-sonnet-4-5
+  experiment_id:
+    description: ID returned by scripts/bootstrap_resources.py.
+  trace_table_prefix:
+    description: Prefix for the Unity Catalog OpenTelemetry trace tables.
+    default: sandpit_agent_cicd
+  uc_function_name:
+    description: Unity Catalog function exposed to Omnigent.
+    default: estimate_project_cost
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      host: https://fevm-zacdav-sandpit.cloud.databricks.com
+      profile: sandpit
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+  prod:
+    mode: production
+    workspace:
+      host: https://fevm-zacdav-sandpit.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

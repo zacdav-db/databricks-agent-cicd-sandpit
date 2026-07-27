@@ -1,0 +1,82 @@
+name: Test and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandpit-agent-cicd
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            -r requirements-ci.txt \
+            -r src/langchain_agent/requirements.txt \
+            -r src/mcp_server/requirements.txt
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest
+      - name: Validate Omnigent YAML
+        run: python scripts/validate_omnigent.py
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABRICKS_AUTH_TYPE: oauth-m2m
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: databricks/setup-cli@main
+      - name: Install deployment dependencies
+        run: python -m pip install -r requirements-ci.txt
+      - name: Bootstrap trace tables and UC function
+        id: bootstrap
+        run: python scripts/bootstrap_resources.py --github-output "$GITHUB_OUTPUT"
+      - name: Validate bundle
+        run: >-
+          databricks bundle validate -t prod
+          --var experiment_id=${{ steps.bootstrap.outputs.experiment_id }}
+      - name: Deploy bundle
+        run: >-
+          databricks bundle deploy -t prod --auto-approve
+          --var experiment_id=${{ steps.bootstrap.outputs.experiment_id }}
+      - name: Start MCP server
+        run: >-
+          databricks bundle run mcp_server -t prod
+          --var experiment_id=${{ steps.bootstrap.outputs.experiment_id }}
+      - name: Start LangChain agent
+        run: >-
+          databricks bundle run langchain_agent -t prod
+          --var experiment_id=${{ steps.bootstrap.outputs.experiment_id }}
+      - name: Start Omnigent
+        run: >-
+          databricks bundle run omnigent -t prod
+          --var experiment_id=${{ steps.bootstrap.outputs.experiment_id }}
+      - name: End-to-end smoke test
+        run: python scripts/smoke_test.py --target prod
