@@ -39,7 +39,9 @@ jobs:
   deploy:
     if: github.event_name != 'pull_request'
     needs: test
-    runs-on: ubuntu-latest
+    # The sandpit workspace IP ACL rejects ephemeral GitHub-hosted addresses.
+    # This runner is repository-scoped and uses an already-authorized network.
+    runs-on: [self-hosted, macOS, ARM64, sandpit-deploy]
     environment: production
     env:
       DATABRICKS_AUTH_TYPE: oauth-m2m

@@ -115,6 +115,16 @@ The `production` GitHub environment needs:
 The credentials belong to a dedicated Databricks service principal and are
 used with OAuth M2M. No PAT, local profile, or secret is committed.
 
+The workspace IP ACL rejects ephemeral GitHub-hosted addresses, so only the
+deploy job uses a repository-scoped, `sandpit-deploy` self-hosted runner on an
+authorized network. Pull-request tests remain on GitHub-hosted runners. The
+runner is installed as a macOS launch service on the sandpit machine.
+
+For this isolated proof, the CI service principal is a workspace administrator
+so it can idempotently bootstrap governed resources. A production rollout
+should replace that broad role with explicit catalog, experiment, app, and
+warehouse grants after the platform team has fixed the target namespaces.
+
 ## Useful commands
 
 ```bash
