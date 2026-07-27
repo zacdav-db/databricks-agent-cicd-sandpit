@@ -90,7 +90,7 @@ jobs:
           --var experiment_id=${{ steps.bootstrap.outputs.experiment_id }}
       - name: Deploy bundle
         run: >-
-          databricks bundle deploy -t prod --auto-approve
+          databricks bundle deploy -t prod --auto-approve --force-lock
           --var experiment_id=${{ steps.bootstrap.outputs.experiment_id }}
       - name: Start MCP server
         run: >-
