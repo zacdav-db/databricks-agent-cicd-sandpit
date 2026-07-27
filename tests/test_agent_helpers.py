@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -56,21 +57,50 @@ def test_langchain_uses_supported_multi_server_client_lifecycle(
         def set_outputs(self, _outputs: dict[str, str]) -> None:
             return None
 
+    class FakeToolInput(BaseModel):
+        value: str
+
+    class FakeManagedTool:
+        name = "managed_tool"
+        description = "Return a rich MCP result."
+        args_schema = FakeToolInput
+
+        async def ainvoke(self, arguments: dict[str, str]) -> list[dict[str, object]]:
+            return [
+                {
+                    "type": "text",
+                    "text": {
+                        "id": "adapter-field-not-accepted-by-claude",
+                        "value": arguments["value"],
+                    },
+                },
+            ]
+
     class FakeMcpClient:
         async def get_tools(self) -> list[object]:
-            return []
+            return [FakeManagedTool()]
 
         async def __aenter__(self):
             raise AssertionError("Multi-server MCP clients are not context managers.")
 
     class FakeAgent:
+        def __init__(self, tools: list[object]) -> None:
+            self.tools = tools
+
         async def ainvoke(self, _inputs: dict[str, object]) -> dict[str, object]:
+            tool_result = await self.tools[0].ainvoke({"value": "plain"})
+            assert isinstance(tool_result, str)
+            assert '"value":"plain"' in tool_result
             return {"messages": [SimpleNamespace(content="managed MCP answer")]}
 
     monkeypatch.setattr(module, "get_model", lambda: object())
     monkeypatch.setattr(module, "WorkspaceClient", lambda: object())
     monkeypatch.setattr(module, "_mcp_client", lambda _client: FakeMcpClient())
-    monkeypatch.setattr(module, "create_agent", lambda **_kwargs: FakeAgent())
+    monkeypatch.setattr(
+        module,
+        "create_agent",
+        lambda **kwargs: FakeAgent(kwargs["tools"]),
+    )
     monkeypatch.setattr(module.mlflow, "start_span", lambda **_kwargs: FakeSpan())
 
     assert asyncio.run(module.invoke_agent("question")) == (

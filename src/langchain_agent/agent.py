@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from functools import lru_cache
 from typing import Any
@@ -14,6 +15,7 @@ from databricks_langchain import (
     DatabricksMultiServerMCPClient,
 )
 from langchain.agents import create_agent
+from langchain_core.tools import StructuredTool
 
 
 def configure_tracing() -> None:
@@ -73,6 +75,39 @@ def _message_text(message: Any) -> str:
     return str(content)
 
 
+def _plain_value(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(exclude_none=True)
+    if isinstance(value, dict):
+        return {key: _plain_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain_value(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def _tool_result_text(value: Any) -> str:
+    """Convert rich MCP content blocks to model-portable tool result text."""
+    if isinstance(value, str):
+        return value
+    return json.dumps(_plain_value(value), separators=(",", ":"), sort_keys=True)
+
+
+def _plain_text_tool(managed_tool: Any) -> StructuredTool:
+    async def invoke_managed_tool(**arguments: Any) -> str:
+        result = await managed_tool.ainvoke(arguments)
+        return _tool_result_text(result)
+
+    return StructuredTool.from_function(
+        coroutine=invoke_managed_tool,
+        name=managed_tool.name,
+        description=managed_tool.description,
+        args_schema=managed_tool.args_schema,
+        infer_schema=False,
+    )
+
+
 async def invoke_agent(message: str) -> tuple[str, str]:
     """Invoke the agent and return its final text and MLflow trace ID."""
     model = get_model()
@@ -80,7 +115,7 @@ async def invoke_agent(message: str) -> tuple[str, str]:
         span.set_inputs({"message": message})
         workspace_client = WorkspaceClient()
         mcp_client = _mcp_client(workspace_client)
-        tools = await mcp_client.get_tools()
+        tools = [_plain_text_tool(tool) for tool in await mcp_client.get_tools()]
         agent = create_agent(
             model=model,
             tools=tools,
