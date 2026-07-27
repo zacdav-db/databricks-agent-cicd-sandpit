@@ -111,8 +111,6 @@ resources:
             value_from: warehouse
           - name: UC_FUNCTION_FULL_NAME
             value_from: project_cost_function
-          - name: LANGCHAIN_AGENT_APP_NAME
-            value_from: langchain_agent_app
           - name: CUSTOM_MCP_APP_NAME
             value_from: custom_mcp_app
           - name: OMNIGENT_HOST_OWNER
@@ -131,10 +129,6 @@ resources:
             securable_full_name: ${var.catalog}.${var.schema}.${var.uc_function_name}
             securable_type: FUNCTION
             permission: EXECUTE
-        - name: langchain_agent_app
-          app:
-            name: ${resources.apps.langchain_agent.name}
-            permission: CAN_USE
         - name: custom_mcp_app
           app:
             name: ${resources.apps.mcp_server.name}

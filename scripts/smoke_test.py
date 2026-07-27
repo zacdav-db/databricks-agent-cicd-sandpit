@@ -216,7 +216,6 @@ def main() -> None:
 
     deadline = time.monotonic() + 120
     omnigent_agent: dict[str, Any] | None = None
-    online_hosts: list[dict[str, Any]] = []
     while time.monotonic() < deadline:
         agents_response = requests.get(
             f"{omnigent_url}/v1/agents",
@@ -232,17 +231,6 @@ def main() -> None:
             ),
             None,
         )
-        hosts_response = requests.get(
-            f"{omnigent_url}/v1/hosts",
-            headers=_headers(client),
-            timeout=30,
-        )
-        hosts_response.raise_for_status()
-        online_hosts = [
-            host
-            for host in hosts_response.json().get("hosts", [])
-            if host.get("status") == "online"
-        ]
         if omnigent_agent:
             break
         time.sleep(10)
@@ -251,9 +239,7 @@ def main() -> None:
 
     # Omnigent 0.6 does not reliably expose YAML function policies through the
     # agent listing API. scripts/validate_omnigent.py validates both definitions.
-    # Its hosts API also filters results by caller identity, so an OAuth service
-    # principal cannot see the colocated host owned by the configured user. The
-    # launcher supervises that host process and terminates if it exits.
+    # The launcher supervises the colocated host process and exits if it fails.
     policy_names = {policy["name"] for policy in omnigent_agent.get("policies", [])}
     mcp_servers = {server["name"] for server in omnigent_agent.get("mcp_servers", [])}
     required_mcp_servers = {"custom_mcp", "project_cost"}
@@ -272,7 +258,7 @@ def main() -> None:
                 "mcp_uppercase": mcp_result,
                 "mcp_langchain_bridge": bridge_result,
                 "omnigent_policies": sorted(policy_names),
-                "omnigent_online_hosts": len(online_hosts),
+                "omnigent_supervisor": omnigent_agent["name"],
                 "omnigent_url": omnigent_url,
                 "trace_table": args.trace_table,
             },

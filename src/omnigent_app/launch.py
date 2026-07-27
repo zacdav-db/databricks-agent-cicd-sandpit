@@ -85,15 +85,23 @@ def _set_uc_function_variables() -> None:
     os.environ["UC_FUNCTION_TOOL_NAME"] = "__".join(parts)
 
 
-def _wait_for_server(url: str, timeout_seconds: int = 120) -> None:
+def _wait_for_server(
+    url: str,
+    process: subprocess.Popen[bytes],
+    timeout_seconds: int = 120,
+) -> None:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
+        status = process.poll()
+        if status is not None:
+            raise RuntimeError(f"Omnigent server exited unexpectedly with {status}.")
         try:
             with urllib.request.urlopen(f"{url}/health", timeout=2) as response:
                 if response.status == 200:
                     return
         except OSError:
-            time.sleep(1)
+            pass
+        time.sleep(1)
     raise TimeoutError(f"Omnigent server did not become ready at {url}.")
 
 
@@ -154,10 +162,6 @@ def main() -> None:
         )
         os.environ["DATABRICKS_CONFIG_FILE"] = str(profile_path)
         os.environ["DATABRICKS_CONFIG_PROFILE"] = "app"
-        os.environ["LANGCHAIN_AGENT_URL"] = _app_url(
-            client,
-            "LANGCHAIN_AGENT_APP_NAME",
-        )
         os.environ["CUSTOM_MCP_URL"] = _app_url(client, "CUSTOM_MCP_APP_NAME")
         _set_uc_function_variables()
         agent_bundle = _render_agent_bundle()
@@ -192,7 +196,7 @@ def main() -> None:
             start_new_session=True,
         )
         local_server_url = f"http://127.0.0.1:{port}"
-        _wait_for_server(local_server_url)
+        _wait_for_server(local_server_url, server)
         host = subprocess.Popen(
             [
                 *uvx_prefix,
