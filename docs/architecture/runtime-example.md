@@ -43,10 +43,10 @@ flowchart LR
 
 | Component | Purpose |
 | --- | --- |
-| `*-sandpit-langchain-agent` | MLflow AgentServer LangChain agent with streaming Responses API, a Databricks Foundation Model, the custom MCP App, and managed Unity Catalog function MCP servers. |
+| `agent-*-sandpit-langchain` | MLflow AgentServer LangChain agent with streaming Responses API, a Databricks Foundation Model, the custom MCP App, and managed Unity Catalog function MCP servers. The `agent-` prefix and ResponsesAgent metadata make it compatible with AI Playground. |
 | `mcp-*-sandpit-tools` | Standalone custom Streamable HTTP MCP server. It exposes tools but has no agent dependency. The `mcp-` prefix makes the App discoverable as an MCP server in AI Playground. |
 | `*-sandpit-omnigent` | Omnigent supervisor that delegates directly to the LangChain App and applies approval policies. |
-| `*-agent-langchain-assistant` | Example App using LangChain through the folder-defined agent contract. |
+| `agent-*-langchain-assistant` | Example ResponsesAgent App using LangChain through the folder-defined agent contract. |
 | Managed Functions MCP | Databricks-managed MCP surface over the target's Unity Catalog functions. |
 | Unity AI Gateway | Governed Agent Service inventory and permissions for every agent App. |
 | Trace tables | Four governed OpenTelemetry tables backing the target's MLflow experiment. |
@@ -71,6 +71,11 @@ Each DAB maps its supported objects at the strongest level currently available:
   `"stream": true` request receives text deltas as LangGraph emits model
   chunks, followed by the completed item, MLflow trace ID, and terminal SSE
   event.
+- The fixed LangChain and folder-defined App names start with `agent-`. CI
+  verifies `/agent/info` reports `use_case=agent` and
+  `agent_api=responses`, the App contract used by AI Playground. These Apps
+  remain Databricks Apps; no UC registered model or Model Serving endpoint is
+  introduced.
 - The fixed LangChain App, Omnigent supervisor, and every folder-defined agent
   are registered after deployment as target-specific Unity Catalog Agent
   Services in Unity AI Gateway. The sandpit owner receives `EXECUTE` and
@@ -103,6 +108,10 @@ and
 [MCP Service limitations](https://docs.databricks.com/aws/en/agents/mcp/mcp-services).
 The streaming route follows Databricks'
 [custom-agent Responses API contract](https://docs.databricks.com/aws/en/agents/custom-agents/author-agent).
+See also the official
+[AI Playground App naming convention](https://docs.databricks.com/aws/en/getting-started/gen-ai-llm-agent#step-3-export-your-agent)
+and
+[querying ResponsesAgent Apps](https://docs.databricks.com/aws/en/agents/custom-agents/query-agent).
 
 ## Trace storage
 

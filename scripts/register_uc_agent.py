@@ -9,6 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
+from app_names import (
+    generated_agent_app_name,
+    langchain_agent_app_name,
+    omnigent_app_name,
+)
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.errors import NotFound
 from databricks.sdk.service.catalog import ConnectionType
@@ -33,21 +38,21 @@ def _inventory_names(target: str) -> tuple[str, str, str]:
     if target not in {"dev", "prod"}:
         raise ValueError("Target must be dev or prod.")
     stem = f"{target}_sandpit_langchain_agent"
-    return f"{target}-sandpit-langchain-agent", stem, f"{stem}_connection"
+    return langchain_agent_app_name(target), stem, f"{stem}_connection"
 
 
 def _omnigent_inventory_names(target: str) -> tuple[str, str, str]:
     if target not in {"dev", "prod"}:
         raise ValueError("Target must be dev or prod.")
     stem = f"{target}_sandpit_omnigent"
-    return f"{target}-sandpit-omnigent", stem, f"{stem}_connection"
+    return omnigent_app_name(target), stem, f"{stem}_connection"
 
 
 def _generated_inventory_names(target: str, name: str) -> tuple[str, str, str]:
     if target not in {"dev", "prod"}:
         raise ValueError("Target must be dev or prod.")
     stem = f"{target}_agent_{name.replace('-', '_')}"
-    return f"{target}-agent-{name}", stem, f"{stem}_connection"
+    return generated_agent_app_name(target, name), stem, f"{stem}_connection"
 
 
 def gateway_agent(
@@ -120,6 +125,35 @@ def _connection_options(
     }
 
 
+def _connection_origin(connection: object) -> str:
+    options = getattr(connection, "options", None)
+    if not isinstance(options, dict):
+        return ""
+    return str(options.get("host", "")).rstrip("/")
+
+
+def _expected_app_origin(app_url: str) -> str:
+    parsed = urlsplit(app_url)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.path not in {"", "/"}:
+        raise ValueError("The Databricks App URL must be an HTTPS origin.")
+    return f"https://{parsed.netloc}"
+
+
+def _require_connection_origin(
+    connection: object,
+    *,
+    connection_name: str,
+    app_url: str,
+) -> None:
+    expected = _expected_app_origin(app_url)
+    actual = _connection_origin(connection)
+    if actual != expected:
+        raise RuntimeError(
+            f"Agent Service connection {connection_name} points to "
+            f"{actual or '<unknown>'}, expected {expected}.",
+        )
+
+
 def _upsert_connection(
     workspace_client: WorkspaceClient,
     *,
@@ -130,19 +164,29 @@ def _upsert_connection(
 ) -> str:
     full_name = f"{catalog}.{schema}.{connection_name}"
     try:
-        workspace_client.connections.get(full_name)
-        connection_exists = True
+        existing_connection = workspace_client.connections.get(full_name)
     except NotFound:
-        connection_exists = False
+        existing_connection = None
 
     client_id = workspace_client.config.client_id
     client_secret = workspace_client.config.client_secret
     if not client_id or not client_secret:
-        if not connection_exists:
+        if existing_connection is None:
             raise RuntimeError(
                 "DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET are required "
                 "to create the Agent Service connection.",
             )
+        try:
+            _require_connection_origin(
+                existing_connection,
+                connection_name=full_name,
+                app_url=app_url,
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET are required "
+                "to update the Agent Service connection after an App URL change.",
+            ) from exc
         return full_name
 
     options = _connection_options(
@@ -151,7 +195,7 @@ def _upsert_connection(
         client_id,
         client_secret,
     )
-    if not connection_exists:
+    if existing_connection is None:
         workspace_client.connections.create(
             name=connection_name,
             parent=f"schemas/{catalog}.{schema}",
@@ -316,6 +360,7 @@ def verify_gateway_registration(
     schema: str,
     registration: GatewayAgent,
     principal: str,
+    app_url: str,
 ) -> dict[str, object]:
     """Read back and verify the Gateway Agent Service and required grants."""
     service_full_name = f"{catalog}.{schema}.{registration.service_name}"
@@ -333,6 +378,12 @@ def verify_gateway_registration(
         raise RuntimeError(
             f"Gateway registration read-back failed for {service_full_name}.",
         )
+    connection = workspace_client.connections.get(connection_full_name)
+    _require_connection_origin(
+        connection,
+        connection_name=connection_full_name,
+        app_url=app_url,
+    )
     privileges = _validate_gateway_registration(
         service=service,
         grants=grants,
@@ -432,6 +483,7 @@ def main() -> None:
         schema=schema,
         registration=registration,
         principal=args.metadata_principal,
+        app_url=app.url,
     )
     print(
         json.dumps(

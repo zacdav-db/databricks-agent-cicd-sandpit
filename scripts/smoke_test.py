@@ -11,6 +11,11 @@ import time
 from datetime import datetime
 from typing import Any
 
+from app_names import (
+    langchain_agent_app_name,
+    mcp_app_name,
+    omnigent_app_name,
+)
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
 
@@ -120,6 +125,22 @@ def _responses_stream(
         "output": output,
         "trace_id": trace_id,
     }
+
+
+def _assert_playground_agent(
+    client: WorkspaceClient,
+    app_name: str,
+    app_url: str,
+) -> dict[str, Any]:
+    """Verify the Databricks App contract used by AI Playground discovery."""
+    if not app_name.startswith("agent-"):
+        raise RuntimeError(
+            f"ResponsesAgent App name must start with agent-: {app_name}",
+        )
+    info = _api_json(client, "GET", f"{app_url.rstrip('/')}/agent/info")
+    if info.get("use_case") != "agent" or info.get("agent_api") != "responses":
+        raise RuntimeError(f"{app_name} is not a ResponsesAgent App: {info}")
+    return info
 
 
 def _mcp_json_payloads(result: dict[str, Any]) -> list[Any]:
@@ -487,10 +508,9 @@ def main() -> None:
             http_timeout_seconds=180,
         ),
     )
-    prefix = args.target
-    mcp_url = _wait_for_app(client, f"mcp-{prefix}-sandpit-tools")
-    agent_url = _wait_for_app(client, f"{prefix}-sandpit-langchain-agent")
-    omnigent_url = _wait_for_app(client, f"{prefix}-sandpit-omnigent")
+    mcp_url = _wait_for_app(client, mcp_app_name(args.target))
+    agent_url = _wait_for_app(client, langchain_agent_app_name(args.target))
+    omnigent_url = _wait_for_app(client, omnigent_app_name(args.target))
     _progress("All three runtime-example Databricks Apps report RUNNING.")
 
     _api_json(client, "GET", f"{agent_url}/api/health")
@@ -652,7 +672,7 @@ def main() -> None:
 
     agent_service_name = (
         f"{args.uc_function.rsplit('.', maxsplit=1)[0]}."
-        f"{prefix}_sandpit_langchain_agent"
+        f"{args.target}_sandpit_langchain_agent"
     )
     agent_service = _api_json(
         client,
