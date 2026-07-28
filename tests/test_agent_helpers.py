@@ -37,6 +37,31 @@ def test_langchain_managed_function_url() -> None:
         module._function_mcp_url("https://workspace.example", "not.fully_qualified")
 
 
+def test_langchain_resolves_the_custom_mcp_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "langchain_custom_mcp",
+        ROOT / "src" / "langchain_agent" / "agent.py",
+    )
+    monkeypatch.setenv("CUSTOM_MCP_APP_NAME", "mcp-dev-sandpit-tools")
+    client = SimpleNamespace(
+        apps=SimpleNamespace(
+            get=lambda *, name: SimpleNamespace(
+                url=(
+                    "https://mcp-dev-sandpit-tools.example"
+                    if name == "mcp-dev-sandpit-tools"
+                    else None
+                ),
+            ),
+        ),
+    )
+
+    assert module._custom_mcp_url(client) == (
+        "https://mcp-dev-sandpit-tools.example/mcp"
+    )
+
+
 def test_langchain_uses_supported_multi_server_client_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -390,6 +415,17 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
     )
     mcp_app_name = mcp_bundle["resources"]["apps"]["mcp_server"]["name"]
     assert mcp_app_name == "mcp-${var.resource_prefix}-sandpit-tools"
+    assert "resources" not in mcp_bundle["resources"]["apps"]["mcp_server"]
+    langchain_resources = {
+        resource["name"]: resource
+        for resource in langchain_bundle["resources"]["apps"]["langchain_agent"][
+            "resources"
+        ]
+    }
+    omnigent_resources = {
+        resource["name"]: resource
+        for resource in omnigent_bundle["resources"]["apps"]["omnigent"]["resources"]
+    }
     for target in ("dev", "prod"):
         resolved_mcp_name = mcp_app_name.replace(
             "${var.resource_prefix}",
@@ -397,9 +433,23 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
         )
         assert resolved_mcp_name.startswith("mcp-")
         assert (
-            omnigent_bundle["targets"][target]["variables"]["custom_mcp_app_name"]
+            langchain_bundle["targets"][target]["variables"]["custom_mcp_app_name"]
             == resolved_mcp_name
         )
+        assert (
+            omnigent_bundle["targets"][target]["variables"][
+                "langchain_agent_app_name"
+            ]
+            == f"{target}-sandpit-langchain-agent"
+        )
+    assert langchain_resources["custom_mcp_app"]["app"] == {
+        "name": "${var.custom_mcp_app_name}",
+        "permission": "CAN_USE",
+    }
+    assert omnigent_resources["langchain_agent_app"]["app"] == {
+        "name": "${var.langchain_agent_app_name}",
+        "permission": "CAN_USE",
+    }
     assert omnigent_bundle["resources"]["apps"]["omnigent"]["name"] == (
         "${var.resource_prefix}-sandpit-omnigent"
     )
@@ -431,13 +481,16 @@ def test_bootstrap_creates_target_schema_before_functions(
     assert statements[0].strip().startswith(
         "CREATE SCHEMA IF NOT EXISTS `catalog_name`.`dev_agent_cicd`",
     )
+    assert statements[1].strip().startswith("CREATE FUNCTION IF NOT EXISTS")
     assert "`catalog_name`.`dev_agent_cicd`.`dev_estimate_project_cost`" in (
         statements[1]
     )
+    assert statements[2].strip().startswith("CREATE FUNCTION IF NOT EXISTS")
     assert (
         "CONVERT_TIMEZONE(CURRENT_TIMEZONE(), 'UTC', CURRENT_TIMESTAMP())"
         in statements[2]
     )
+    assert all("OR REPLACE" not in statement for statement in statements)
 
 
 def test_ci_promotes_dev_to_main_before_production() -> None:
@@ -508,7 +561,7 @@ def test_omnigent_cost_policy_asks_at_each_new_dollar() -> None:
         module.every_dollar_cost_gate(0)
 
 
-def test_omnigent_launcher_renders_uc_function(
+def test_omnigent_launcher_renders_direct_langchain_delegate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _load(
@@ -516,22 +569,116 @@ def test_omnigent_launcher_renders_uc_function(
         ROOT / "src" / "omnigent_app" / "launch.py",
     )
     values = {
-        "CUSTOM_MCP_URL": "https://custom-mcp.example",
         "DATABRICKS_CONFIG_PROFILE": "app",
-        "DATABRICKS_HOST": "https://workspace.example",
-        "DATABRICKS_WAREHOUSE_ID": "warehouse-id",
         "MODEL_ENDPOINT": "model-endpoint",
-        "UC_FUNCTION_FULL_NAME": "catalog_name.schema_name.estimate_project_cost",
     }
     for name, value in values.items():
         monkeypatch.setenv(name, value)
 
-    module._set_uc_function_variables()
     bundle = module._render_agent_bundle()
     try:
-        config = (bundle / "config.yaml").read_text(encoding="utf-8")
-        assert "/catalog_name/schema_name/estimate_project_cost" in config
-        assert "catalog_name__schema_name__estimate_project_cost" in config
+        config = (bundle / "sandpit_supervisor.yaml").read_text(encoding="utf-8")
+        assert "model-endpoint" in config
+        assert "type: agent" in config
+        assert "agent_tools.invoke_langchain_agent" in config
+        assert "type: mcp" not in config
         assert "${" not in config
     finally:
         shutil.rmtree(bundle.parent)
+
+
+def test_omnigent_launcher_uses_one_identity_behind_app_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "omnigent_launcher_identity",
+        ROOT / "src" / "omnigent_app" / "launch.py",
+    )
+    monkeypatch.delenv("OMNIGENT_LOCAL_SINGLE_USER", raising=False)
+    monkeypatch.delenv("OMNIGENT_AUTH_HEADER", raising=False)
+
+    module._configure_single_user_identity()
+
+    assert module.os.environ["OMNIGENT_LOCAL_SINGLE_USER"] == "1"
+    assert module.os.environ["OMNIGENT_AUTH_HEADER"] == module.LOCAL_AUTH_HEADER
+    assert module.LOCAL_AUTH_HEADER != "X-Forwarded-Email"
+
+
+def test_omnigent_launcher_passes_app_url_to_child_runners(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "omnigent_launcher_runner_env",
+        ROOT / "src" / "omnigent_app" / "launch.py",
+    )
+    monkeypatch.setenv(
+        module.RUNNER_ENV_PASSTHROUGH,
+        "EXISTING_SETTING, LANGCHAIN_AGENT_URL",
+    )
+
+    module._configure_runner_environment()
+
+    assert module.os.environ[module.RUNNER_ENV_PASSTHROUGH] == (
+        "EXISTING_SETTING,LANGCHAIN_AGENT_URL"
+    )
+
+
+def test_omnigent_direct_tool_invokes_langchain_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "omnigent_agent_tools",
+        ROOT / "src" / "omnigent_app" / "agent_tools.py",
+    )
+    calls: list[tuple[str, str, dict[str, str]]] = []
+
+    class FakeApiClient:
+        def do(
+            self,
+            method: str,
+            *,
+            url: str,
+            body: dict[str, str],
+        ) -> dict[str, str]:
+            calls.append((method, url, body))
+            return {
+                "output": "answer",
+                "trace_id": "trace-id",
+                "internal": "not part of the tool contract",
+            }
+
+    class FakeClient:
+        api_client = FakeApiClient()
+
+    monkeypatch.setenv("DATABRICKS_CONFIG_PROFILE", "app")
+    monkeypatch.setenv("LANGCHAIN_AGENT_URL", "https://langchain.example/")
+    monkeypatch.setattr(module, "_workspace_client", lambda: FakeClient())
+
+    assert module.invoke_langchain_agent("question") == {
+        "output": "answer",
+        "trace_id": "trace-id",
+    }
+    assert calls == [
+        (
+            "POST",
+            "https://langchain.example/api/invocations",
+            {"input": "question"},
+        ),
+    ]
+
+
+def test_custom_mcp_does_not_proxy_to_langchain() -> None:
+    server = (ROOT / "src" / "mcp_server" / "server.py").read_text(
+        encoding="utf-8",
+    )
+    assert "invoke_langchain_agent" not in server
+    assert "LANGCHAIN_AGENT_APP_NAME" not in server
+
+
+def test_runtime_change_smokes_consumers_without_redeploying_them() -> None:
+    deploy_target = (ROOT / "scripts" / "deploy_target.sh").read_text(
+        encoding="utf-8",
+    )
+
+    assert "--app topology" in deploy_target
+    assert '.apps | index("omnigent") != null' in deploy_target

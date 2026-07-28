@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import configparser
-import json
 import os
 import pathlib
 import shutil
@@ -14,6 +13,9 @@ import time
 import urllib.request
 
 from databricks.sdk import WorkspaceClient
+
+LOCAL_AUTH_HEADER = "X-Omnigent-Local-Identity"
+RUNNER_ENV_PASSTHROUGH = "OMNIGENT_RUNNER_ENV_PASSTHROUGH"
 
 
 def _require_env(name: str) -> str:
@@ -52,6 +54,23 @@ def _app_url(client: WorkspaceClient, env_name: str) -> str:
     return app.url.rstrip("/")
 
 
+def _configure_single_user_identity() -> None:
+    """Use one Omnigent identity behind the Databricks App auth boundary."""
+    os.environ["OMNIGENT_LOCAL_SINGLE_USER"] = "1"
+    os.environ["OMNIGENT_AUTH_HEADER"] = LOCAL_AUTH_HEADER
+
+
+def _configure_runner_environment() -> None:
+    """Pass the deployment-owned App URL to Omnigent child runners."""
+    names = {
+        name.strip()
+        for name in os.getenv(RUNNER_ENV_PASSTHROUGH, "").split(",")
+        if name.strip()
+    }
+    names.add("LANGCHAIN_AGENT_URL")
+    os.environ[RUNNER_ENV_PASSTHROUGH] = ",".join(sorted(names))
+
+
 def _render_agent_bundle() -> pathlib.Path:
     """Materialize the YAML template with deployment-specific values."""
     source = pathlib.Path(__file__).parent / "sandpit_supervisor"
@@ -59,13 +78,8 @@ def _render_agent_bundle() -> pathlib.Path:
     shutil.copytree(source, destination)
 
     replacements = {
-        "${CUSTOM_MCP_URL}": _require_env("CUSTOM_MCP_URL"),
-        "${DATABRICKS_HOST}": _databricks_host(),
         "${DATABRICKS_CONFIG_PROFILE}": _require_env("DATABRICKS_CONFIG_PROFILE"),
-        "${DATABRICKS_WAREHOUSE_ID}": _require_env("DATABRICKS_WAREHOUSE_ID"),
         "${MODEL_ENDPOINT}": _require_env("MODEL_ENDPOINT"),
-        "${UC_FUNCTION_MCP_PATH}": _require_env("UC_FUNCTION_MCP_PATH"),
-        "${UC_FUNCTION_TOOL_NAME}": _require_env("UC_FUNCTION_TOOL_NAME"),
     }
     for config_path in destination.rglob("*.yaml"):
         rendered = config_path.read_text(encoding="utf-8")
@@ -75,14 +89,6 @@ def _render_agent_bundle() -> pathlib.Path:
             raise RuntimeError(f"Unresolved template variable in {config_path}.")
         config_path.write_text(rendered, encoding="utf-8")
     return destination
-
-
-def _set_uc_function_variables() -> None:
-    parts = _require_env("UC_FUNCTION_FULL_NAME").split(".")
-    if len(parts) != 3 or any(not part.replace("_", "").isalnum() for part in parts):
-        raise RuntimeError("UC_FUNCTION_FULL_NAME must be catalog.schema.function.")
-    os.environ["UC_FUNCTION_MCP_PATH"] = "/".join(parts)
-    os.environ["UC_FUNCTION_TOOL_NAME"] = "__".join(parts)
 
 
 def _wait_for_server(
@@ -154,16 +160,17 @@ def main() -> None:
             if existing_pythonpath
             else source_root
         )
-        # Databricks Apps provides the external authentication boundary. Allow
-        # the colocated host to register without a second login flow.
-        os.environ["OMNIGENT_LOCAL_SINGLE_USER"] = "1"
-        os.environ["OMNIGENT_DATABRICKS_EXTRA_HEADERS"] = json.dumps(
-            {"X-Forwarded-Email": _require_env("OMNIGENT_HOST_OWNER")},
-        )
+        # Databricks Apps provides the external authentication boundary. Keep
+        # this example as one Omnigent user so callers using user or
+        # service-principal OAuth can see the same colocated host.
+        _configure_single_user_identity()
         os.environ["DATABRICKS_CONFIG_FILE"] = str(profile_path)
         os.environ["DATABRICKS_CONFIG_PROFILE"] = "app"
-        os.environ["CUSTOM_MCP_URL"] = _app_url(client, "CUSTOM_MCP_APP_NAME")
-        _set_uc_function_variables()
+        os.environ["LANGCHAIN_AGENT_URL"] = _app_url(
+            client,
+            "LANGCHAIN_AGENT_APP_NAME",
+        )
+        _configure_runner_environment()
         agent_bundle = _render_agent_bundle()
 
         port = os.getenv("DATABRICKS_APP_PORT", "8000")

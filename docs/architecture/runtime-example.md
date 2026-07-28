@@ -15,7 +15,7 @@ roots, and trace tables.
 flowchart LR
     User["User or API client"]
     Omni["Omnigent App"]
-    MCP["Custom MCP App"]
+    MCP["Custom MCP App<br/>(standalone tool server)"]
     Agent["LangChain App"]
     Generated["Folder-defined agent App"]
     Managed["Managed Functions MCP"]
@@ -25,15 +25,15 @@ flowchart LR
     Traces[("Unity Catalog trace tables")]
 
     User --> Omni
-    Omni -->|"custom tools"| MCP
-    MCP -->|"invoke agent"| Agent
-    Omni -->|"governed tool"| Managed
+    Omni -->|"direct App invocation"| Agent
+    Agent -->|"custom tools"| MCP
     Agent -->|"governed tools"| Managed
-    Managed --> Functions
-    Agent --> Model
-    Generated --> Model
-    Agent --> Traces
-    Generated --> Traces
+    Managed -->|"execute"| Functions
+    Omni -->|"supervision"| Model
+    Agent -->|"inference"| Model
+    Generated -->|"inference"| Model
+    Agent -->|"MLflow spans"| Traces
+    Generated -->|"MLflow spans"| Traces
     Gateway -. "governed inventory" .-> Agent
     Gateway -. "governed inventory" .-> Generated
     Gateway -. "governed inventory" .-> Omni
@@ -43,9 +43,9 @@ flowchart LR
 
 | Component | Purpose |
 | --- | --- |
-| `*-sandpit-langchain-agent` | FastAPI LangChain agent using a Databricks Foundation Model and managed Unity Catalog function MCP servers. |
-| `mcp-*-sandpit-tools` | Custom Streamable HTTP MCP server with tools and a bridge to the LangChain App. The `mcp-` prefix makes the App discoverable as an MCP server in AI Playground. |
-| `*-sandpit-omnigent` | Omnigent supervisor that uses the custom MCP, a managed UC function, and approval policies. |
+| `*-sandpit-langchain-agent` | FastAPI LangChain agent using a Databricks Foundation Model, the custom MCP App, and managed Unity Catalog function MCP servers. |
+| `mcp-*-sandpit-tools` | Standalone custom Streamable HTTP MCP server. It exposes tools but has no agent dependency. The `mcp-` prefix makes the App discoverable as an MCP server in AI Playground. |
+| `*-sandpit-omnigent` | Omnigent supervisor that delegates directly to the LangChain App and applies approval policies. |
 | `*-agent-langchain-assistant` | Example App using LangChain through the folder-defined agent contract. |
 | Managed Functions MCP | Databricks-managed MCP surface over the target's Unity Catalog functions. |
 | Unity AI Gateway | Governed Agent Service inventory and permissions for every agent App. |
@@ -56,8 +56,17 @@ flowchart LR
 Each DAB maps its supported objects at the strongest level currently available:
 
 - The cost and current-time tools are three-level Unity Catalog `FUNCTION`
-  securables. Agent Apps receive `EXECUTE` through DAB `uc_securable` bindings
-  and discover them through managed Functions MCP endpoints.
+  securables. The LangChain App receives `EXECUTE` through DAB
+  `uc_securable` bindings and discovers them through managed Functions MCP
+  endpoints.
+- The LangChain DAB declares the custom MCP App as a
+  [Databricks App resource](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/apps-resource)
+  with `CAN_USE`. The LangChain App resolves its target-specific URL and loads
+  its tools alongside the managed function tools.
+- The Omnigent DAB declares the LangChain App as a
+  [Databricks App resource](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/apps-resource)
+  with `CAN_USE`. Its deployment-owned function tool invokes LangChain's
+  `/api/invocations` endpoint directly.
 - The fixed LangChain App, Omnigent supervisor, and every folder-defined agent
   are registered after deployment as target-specific Unity Catalog Agent
   Services in Unity AI Gateway. The sandpit owner receives `EXECUTE` and
@@ -107,22 +116,33 @@ trace is queryable in the target's spans table.
 ## Omnigent behavior
 
 The supervisor definition is
-[`src/omnigent_app/sandpit_supervisor/config.yaml`](../../src/omnigent_app/sandpit_supervisor/config.yaml).
+[`src/omnigent_app/sandpit_supervisor/sandpit_supervisor.yaml`](../../src/omnigent_app/sandpit_supervisor/sandpit_supervisor.yaml).
 It demonstrates:
 
-- A remote custom MCP server authenticated with Databricks OAuth.
-- A governed Unity Catalog function exposed through managed Functions MCP.
-- A subagent that reaches the LangChain App through the custom MCP bridge.
+- A subagent that invokes the LangChain App directly with Databricks App
+  authentication.
+- Indirect access to custom MCP and governed Unity Catalog function tools
+  through LangChain's tool-calling loop.
 - An `ASK` policy before `sys_session_send` or `sys_session_create`.
 - An `ASK` policy whenever cumulative Omnigent spend reaches a new whole
   dollar checkpoint.
 
 Omnigent evaluates spend at turn and tool boundaries. If one turn crosses
 several checkpoints, it asks once at the highest newly crossed checkpoint.
-The policy measures Omnigent LLM spend; the downstream LangChain App records
-its own MLflow trace.
+The policy measures Omnigent's supervisory LLM spend. The downstream
+LangChain App records its own MLflow trace, including its model and MCP tool
+spans. The custom MCP is independently deployable and contains no callback or
+bridge to LangChain.
+
+The sandpit supervisor is one Omnigent user behind the
+[Databricks Apps authentication boundary](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/auth).
+This keeps its colocated host visible to both interactive users and the CI
+service principal without bypassing App authentication.
 
 Databricks Apps supplies Python 3.11, while Omnigent 0.6 requires Python 3.12.
 The Omnigent launcher uses `uvx` for an isolated Python 3.12 runtime. This
 sandpit uses Omnigent local single-user mode; a multi-user rollout should use
-its shared-server SSO mode.
+its shared-server SSO mode. Omnigent filters the environment of spawned
+runners, so the launcher explicitly passes through only the deployment-owned
+LangChain App URL; Databricks credentials continue through Omnigent's built-in
+Databricks profile handling.

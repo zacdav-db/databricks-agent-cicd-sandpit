@@ -62,14 +62,34 @@ def test_runtime_app_change_selects_only_that_app() -> None:
     }
 
 
-def test_deployment_platform_change_selects_every_unit() -> None:
+@pytest.mark.parametrize(
+    "path",
+    [
+        "scripts/bootstrap_resources.py",
+        "scripts/migrate_app_bundle.sh",
+        "scripts/select_deployments.py",
+        "scripts/smoke_test.py",
+    ],
+)
+def test_deployment_platform_change_selects_every_unit(path: str) -> None:
     assert select_deployments(
-        ["scripts/migrate_app_bundle.sh"],
+        [path],
         AGENTS,
     ) == {
-        "apps": ["langchain", "mcp", "omnigent"],
+        "apps": ["mcp", "langchain", "omnigent"],
         "agents": AGENTS,
     }
+
+
+def test_runtime_dependencies_deploy_in_call_order() -> None:
+    assert select_deployments(
+        [
+            "src/omnigent_app/config.yaml",
+            "src/langchain_agent/agent.py",
+            "src/mcp_server/server.py",
+        ],
+        AGENTS,
+    )["apps"] == ["mcp", "langchain", "omnigent"]
 
 
 def test_docs_and_tests_do_not_trigger_deployment() -> None:

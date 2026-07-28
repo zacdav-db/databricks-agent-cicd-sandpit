@@ -12,19 +12,26 @@ AGENT_PLATFORM_PATHS = (
     "scripts/compose_agents.py",
 )
 DEPLOYMENT_PLATFORM_PATHS = (
+    "scripts/bootstrap_resources.py",
     "scripts/deploy_agent.sh",
     "scripts/deploy_runtime_app.sh",
     "scripts/deploy_target.sh",
     "scripts/migrate_app_bundle.sh",
     "scripts/register_uc_agent.py",
+    "scripts/select_deployments.py",
     "scripts/smoke_agent.py",
     "scripts/smoke_runtime_app.py",
+    "scripts/smoke_test.py",
 )
 RUNTIME_APP_PATHS = {
-    "langchain": ("src/langchain_agent/",),
     "mcp": ("src/mcp_server/",),
+    "langchain": ("src/langchain_agent/",),
     "omnigent": ("src/omnigent_app/",),
 }
+RUNTIME_APP_ORDER = ("mcp", "langchain", "omnigent")
+
+if set(RUNTIME_APP_ORDER) != set(RUNTIME_APP_PATHS):
+    raise RuntimeError("RUNTIME_APP_ORDER must contain every runtime App exactly once.")
 
 
 def _matches(path: str, prefixes: tuple[str, ...]) -> bool:
@@ -56,13 +63,16 @@ def select_deployments(
         and parts[1] in known_agents
     }
     selected_apps = (
-        sorted(RUNTIME_APP_PATHS)
+        list(RUNTIME_APP_ORDER)
         if deploy_all_units
-        else sorted(
+        else [
             app
-            for app, prefixes in RUNTIME_APP_PATHS.items()
-            if any(_matches(path, prefixes) for path in changed_paths)
-        )
+            for app in RUNTIME_APP_ORDER
+            if any(
+                _matches(path, RUNTIME_APP_PATHS[app])
+                for path in changed_paths
+            )
+        ]
     )
     return {
         "apps": selected_apps,

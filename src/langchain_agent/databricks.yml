@@ -15,6 +15,7 @@ variables:
   trace_table_prefix: {}
   uc_function_name: {}
   uc_time_function_name: {}
+  custom_mcp_app_name: {}
 
 targets:
   dev:
@@ -26,6 +27,7 @@ targets:
       trace_table_prefix: dev_sandpit_agent_cicd
       uc_function_name: dev_estimate_project_cost
       uc_time_function_name: dev_current_utc_timestamp
+      custom_mcp_app_name: mcp-dev-sandpit-tools
     workspace:
       host: https://fevm-zacdav-sandpit.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
@@ -37,6 +39,7 @@ targets:
       trace_table_prefix: prod_sandpit_agent_cicd
       uc_function_name: prod_estimate_project_cost
       uc_time_function_name: prod_current_utc_timestamp
+      custom_mcp_app_name: mcp-prod-sandpit-tools
     workspace:
       host: https://fevm-zacdav-sandpit.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
@@ -58,6 +61,8 @@ resources:
             value_from: trace_warehouse
           - name: MODEL_ENDPOINT
             value_from: llm
+          - name: CUSTOM_MCP_APP_NAME
+            value_from: custom_mcp_app
           - name: DEPLOYMENT_ENV
             value: ${bundle.target}
           - name: UC_COST_FUNCTION_FULL_NAME
@@ -69,6 +74,10 @@ resources:
           serving_endpoint:
             name: ${var.model_endpoint}
             permission: CAN_QUERY
+        - name: custom_mcp_app
+          app:
+            name: ${var.custom_mcp_app_name}
+            permission: CAN_USE
         - name: trace_experiment
           experiment:
             experiment_id: ${var.experiment_id}

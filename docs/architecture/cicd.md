@@ -53,7 +53,9 @@ A merged pull request pushes to `dev`. GitHub Actions then:
 5. Validates, deploys, and starts only the selected unit.
 6. Registers each selected agent App in Unity AI Gateway, reads its Agent
    Service and grants back, and fails closed on any mismatch.
-7. Invokes and trace-smoke-tests only the selected unit.
+7. Smoke-tests the selected unit. For any runtime-App change, it also exercises
+   the complete Omnigent → LangChain → custom MCP path without redeploying
+   unchanged consumers.
 
 An `agents/gemini-assistant/**` change deploys only the Gemini App. A change to
 the injected `agent_platform/**` intentionally deploys every folder-defined
@@ -100,13 +102,24 @@ Each folder-defined agent has a complete generated DAB with a unique
 `bundle.name` and workspace root. Its state contains exactly one App. Selecting
 one agent therefore cannot plan, update, restart, or delete a sibling App.
 
-The LangChain, MCP, and Omnigent Apps also have one bundle each. MCP and
-Omnigent reference their dependencies by target-specific App name, so those
-references do not require shared state.
-
-Deployments run sequentially. This avoids overlapping App identity and OAuth
-updates in the shared sandpit workspace while preserving independent bundle
+The LangChain, MCP, and Omnigent Apps also have one bundle each. LangChain
+references the custom MCP by target-specific App name, and Omnigent references
+LangChain the same way, so those dependencies do not require shared bundle
 state.
+
+When all three are selected, deployment follows runtime dependency order:
+MCP, LangChain, then Omnigent. Deployments remain sequential to avoid
+overlapping App identity and OAuth updates in the shared sandpit workspace
+while preserving independent bundle state.
+
+When only one runtime App changes, only that App's DAB is deployed and
+restarted. CI then invokes the already-running downstream consumers as an
+acceptance test; those consumers are not planned or updated.
+
+Shared bootstrap is non-destructive: it creates Unity Catalog functions only
+when they are missing. It does not replace grant-bearing functions during an
+unrelated App deployment, so the LangChain App keeps its managed MCP
+`EXECUTE` permission.
 
 Both targets currently use the same workspace, catalog, warehouse, model
 endpoint, and GitHub credential environment. They do not share:

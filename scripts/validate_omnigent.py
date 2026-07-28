@@ -15,13 +15,9 @@ sys.path.insert(0, str(AGENT.parent))
 
 def main() -> None:
     defaults = {
-        "CUSTOM_MCP_URL": "https://example.databricksapps.com",
         "DATABRICKS_CONFIG_PROFILE": "sandpit",
-        "DATABRICKS_HOST": "https://example.cloud.databricks.com",
-        "DATABRICKS_WAREHOUSE_ID": "warehouse-id",
+        "LANGCHAIN_AGENT_URL": "https://agent.example.databricksapps.com",
         "MODEL_ENDPOINT": "databricks-claude-sonnet-4-5",
-        "UC_FUNCTION_MCP_PATH": "catalog/schema/estimate_project_cost",
-        "UC_FUNCTION_TOOL_NAME": "catalog__schema__estimate_project_cost",
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
@@ -30,20 +26,36 @@ def main() -> None:
         raise RuntimeError(f"Unexpected agent name: {spec.name}")
 
     mcp_names = {server.name for server in spec.mcp_servers}
-    required_mcp = {"custom_mcp", "project_cost"}
-    if not required_mcp.issubset(mcp_names):
-        raise RuntimeError(f"Missing MCP servers: {required_mcp - mcp_names}")
-    uc_server = next(server for server in spec.mcp_servers if server.name == "project_cost")
-    if "/api/2.0/mcp/functions/" not in (uc_server.url or ""):
-        raise RuntimeError("The Unity Catalog function MCP endpoint is not configured.")
+    if mcp_names:
+        raise RuntimeError(
+            f"Omnigent must delegate to LangChain, not MCP directly: {mcp_names}",
+        )
 
     subagents = {agent.name: agent for agent in spec.sub_agents}
     databricks_agent = subagents.get("databricks_agent")
     if databricks_agent is None:
-        raise RuntimeError("The LangChain bridge subagent is not configured.")
-    bridge_servers = {server.name for server in databricks_agent.mcp_servers}
-    if "langchain_agent" not in bridge_servers:
-        raise RuntimeError("The LangChain bridge tool is not configured.")
+        raise RuntimeError("The LangChain delegate subagent is not configured.")
+    delegate_mcp_servers = {
+        server.name for server in databricks_agent.mcp_servers
+    }
+    if delegate_mcp_servers:
+        raise RuntimeError(
+            "The LangChain delegate must not use an MCP bridge: "
+            f"{delegate_mcp_servers}",
+        )
+    delegate_tools = {
+        tool.name: tool
+        for tool in databricks_agent.local_tools
+    }
+    if set(delegate_tools) != {"invoke_langchain_agent"}:
+        raise RuntimeError(
+            f"The LangChain delegate has unexpected tools: {set(delegate_tools)}",
+        )
+    delegate_tool = delegate_tools["invoke_langchain_agent"]
+    if delegate_tool.path != "agent_tools.invoke_langchain_agent":
+        raise RuntimeError(
+            f"The LangChain delegate has an unexpected callable: {delegate_tool.path}",
+        )
 
     policies = {
         policy.name
@@ -55,7 +67,7 @@ def main() -> None:
 
     print(
         "Validated Omnigent agent: "
-        f"{spec.name} (UC function MCP, custom MCP, LangChain bridge, policies)",
+        f"{spec.name} (direct LangChain delegation and approval policies)",
     )
 
 

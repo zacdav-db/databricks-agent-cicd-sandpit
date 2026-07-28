@@ -28,12 +28,7 @@ case "${component}" in
   omnigent)
     bundle_dir="src/omnigent_app"
     resource_key="omnigent"
-    bundle_args=(
-      -t "${target}"
-      --var "catalog=${UC_CATALOG}"
-      --var "schema=${UC_SCHEMA}"
-      --var "uc_function_name=${UC_COST_FUNCTION}"
-    )
+    bundle_args=(-t "${target}")
     ;;
   *)
     echo "App must be langchain, mcp, or omnigent." >&2
