@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from functools import lru_cache
 
 from anthropic import Anthropic
@@ -38,3 +39,13 @@ def invoke(message: str) -> str:
     if not text:
         raise RuntimeError("Claude returned no text.")
     return text
+
+
+def invoke_stream(message: str) -> Iterator[str]:
+    """Stream text from the native Anthropic-compatible endpoint."""
+    with _client().messages.stream(
+        model=os.environ["MODEL_ENDPOINT"],
+        max_tokens=300,
+        messages=[{"role": "user", "content": message}],
+    ) as response:
+        yield from response.text_stream

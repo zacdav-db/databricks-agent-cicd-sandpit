@@ -13,7 +13,7 @@ from register_uc_agent import (
     gateway_agent,
     verify_gateway_registration,
 )
-from smoke_test import _api_json, _wait_for_app, _wait_for_trace
+from smoke_test import _api_json, _responses_stream, _wait_for_app, _wait_for_trace
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,11 +57,10 @@ def main() -> None:
         principal=args.metadata_principal,
     )
     _api_json(client, "GET", f"{app_url}/api/health")
-    result = _api_json(
+    result = _responses_stream(
         client,
-        "POST",
-        f"{app_url}/api/invocations",
-        body={"input": "Reply briefly to confirm this agent is healthy."},
+        app_url,
+        "Reply with one complete sentence confirming that this agent is healthy.",
     )
     if not result.get("output") or not result.get("trace_id"):
         raise RuntimeError(f"{app_name} returned an invalid result: {result}")
@@ -78,6 +77,7 @@ def main() -> None:
                 "app": app_name,
                 "gateway_agent_service": gateway["agent_service"],
                 "gateway_registration_verified": True,
+                "stream_delta_count": result["delta_count"],
                 "output": result["output"],
                 "trace_id": result["trace_id"],
                 "trace_span_counts": trace_counts,

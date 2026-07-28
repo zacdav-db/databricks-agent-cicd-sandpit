@@ -60,16 +60,31 @@ def invoke(message: str) -> str:
     return f"Received: {message}"
 ```
 
+True streaming is an optional convention, not another YAML field:
+
+```python
+def invoke_stream(message: str):
+    yield "Received: "
+    yield message
+```
+
+The name is derived from the configured entrypoint. For
+`entrypoint: agent:answer`, the platform looks for `answer_stream`. It accepts
+synchronous and asynchronous iterators of strings. If the companion function
+is absent, `/responses` remains compatible but emits the result of `invoke` as
+one text delta.
+
 This is a plain Python callable, not a base class or platform SDK. Agent code
 can use LangChain, the OpenAI Agents SDK, or a custom implementation. When the
 agent needs the approved Databricks model, it reads `MODEL_ENDPOINT`; the
 platform resolves that value from the manifest's model alias and grants the
 App permission to query it.
 
-The one-function boundary is deliberate. Agent frameworks do not share a
-stable input and output object, so automatically detecting framework objects
-would be brittle. The author makes that framework-specific conversion inside
-`invoke`; the centrally managed platform handles everything around it.
+The function boundary is deliberate. Agent frameworks do not share a stable
+input, output, or streaming object, so automatically detecting framework
+objects would be brittle. The author makes that framework-specific conversion
+inside `invoke` and, when needed, `invoke_stream`; the centrally managed
+platform handles everything around them.
 
 For example, an existing async agent only needs a thin call:
 
@@ -117,7 +132,9 @@ and
 
 The platform owns:
 
-- `/`, `/api/health`, and `/api/invocations`.
+- The standard MLflow AgentServer `/responses` endpoint, including Server-Sent
+  Events and trace-ID events, plus `/`, `/api/health`, and the legacy
+  `/api/invocations` compatibility route.
 - Input bounds, error handling, a 120-second timeout, and thread handling for
   synchronous functions.
 - MLflow tracing and returned trace IDs.
@@ -131,6 +148,12 @@ the installed LangChain, OpenAI, Anthropic, and Gemini MLflow integrations;
 their model calls become child spans of the platform's root invocation span.
 See [platform-owned tracing](platform-tracing.md) for the capture boundaries
 and the externally hosted example.
+
+The deployed smoke test sends `"stream": true` to every example and requires
+multiple text deltas, a completed output item, a terminal event, and a
+queryable trace. See Databricks'
+[custom-agent authoring guide](https://docs.databricks.com/aws/en/agents/custom-agents/author-agent)
+for the Responses API event contract.
 
 ## Deployment isolation
 
@@ -158,6 +181,7 @@ The contract is intentionally strict. CI rejects:
 - Missing, duplicate, or unknown YAML fields.
 - Invalid, reserved, mismatched, or oversized names.
 - Missing entrypoints, invalid syntax, or the wrong function signature.
+- An invalid optional streaming function signature.
 - Python that does not compile on the Databricks Python 3.11 runtime.
 - Symlinks, hidden files, reserved runtime paths, large files, and credential
   file types.

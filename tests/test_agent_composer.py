@@ -76,7 +76,7 @@ def test_compose_agents_is_deterministic_and_platform_owned(tmp_path: Path) -> N
     assert git_marker.read_text(encoding="utf-8") == "repository metadata"
     assert (root / "agents/small-agent/agent.py").is_file()
     assert (root / "agents/small-agent/agent.py").read_bytes() == author_source
-    assert index["contract_version"] == 3
+    assert index["contract_version"] == 4
     assert index["agents"][0]["resource_key"] == "generated_agent_small_agent"
     assert index["agents"][0]["bundle_path"] == (
         ".generated/bundles/small-agent"
@@ -186,6 +186,25 @@ def test_entrypoint_signature_is_validated_without_importing_code(
         "    return message\n",
     )
     with pytest.raises(compose_agents.ContractError, match="exactly one argument"):
+        compose_agents.compose(root)
+
+
+def test_optional_stream_signature_is_validated_without_manifest_field(
+    tmp_path: Path,
+) -> None:
+    root, _ = _repository(
+        tmp_path,
+        source=(
+            "def invoke(message):\n"
+            "    return message\n\n"
+            "def invoke_stream(message, options=None):\n"
+            "    yield message\n"
+        ),
+    )
+    with pytest.raises(
+        compose_agents.ContractError,
+        match="Optional stream function invoke_stream",
+    ):
         compose_agents.compose(root)
 
 

@@ -9,8 +9,8 @@ The deployment adds two platform-owned layers:
 
 - `sitecustomize.py` is loaded by Python before application imports and enables
   MLflow autologging for every supported provider package that is installed.
-- `_agent_runtime.py` owns the HTTP invocation boundary and creates the root
-  span around `author_agent:invoke`.
+- `_agent_runtime.py` owns the Responses API, streaming boundary, and root
+  span around `author_agent:invoke` or `author_agent:invoke_stream`.
 
 Build from the repository root:
 
@@ -67,16 +67,21 @@ boundary. The example runtime focuses on invocation and tracing. Invoke a
 local container with:
 
 ```bash
-curl http://localhost:8000/api/invocations \
-  --json '{"input":"What makes a trace useful?"}'
+curl --no-buffer http://localhost:8000/responses \
+  --header 'Accept: text/event-stream' \
+  --header 'Content-Type: application/json' \
+  --header 'x-mlflow-return-trace-id: true' \
+  --data '{
+    "input": [{"role": "user", "content": "What makes a trace useful?"}],
+    "stream": true
+  }'
 ```
 
-The response contains the root MLflow `trace_id`. The OpenAI call appears as a
-child span because its SDK was installed before the deployment-owned bootstrap
-ran.
-
-The external image uses the production-focused `mlflow-tracing` package rather
-than the full MLflow development package.
+The Server-Sent Events include output-text deltas, the completed item, the
+root MLflow trace ID, and a terminal `[DONE]` event. The OpenAI call appears as
+a child span because its SDK was installed before the deployment-owned
+bootstrap ran. The image pins the full MLflow Databricks extra because the
+platform runtime uses MLflow AgentServer as well as tracing.
 
 ## Optional Gateway registration
 

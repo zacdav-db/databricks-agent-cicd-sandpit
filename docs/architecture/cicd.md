@@ -116,6 +116,12 @@ When only one runtime App changes, only that App's DAB is deployed and
 restarted. CI then invokes the already-running downstream consumers as an
 acceptance test; those consumers are not planned or updated.
 
+Every selected agent is exercised through `/responses` with `"stream": true`.
+The smoke test requires multiple text deltas, a completed item, a terminal
+Server-Sent Event, a returned MLflow trace ID, and a queryable provider child
+span. This prevents a route that merely buffers the complete answer from
+passing as streaming.
+
 Shared bootstrap is non-destructive: it creates Unity Catalog functions only
 when they are missing. It does not replace grant-bearing functions during an
 unrelated App deployment, so the LangChain App keeps its managed MCP

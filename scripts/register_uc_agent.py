@@ -66,7 +66,7 @@ def gateway_agent(
             app_name=app_name,
             service_name=service_name,
             connection_name=connection_name,
-            base_path="/api/invocations",
+            base_path="/responses",
             system_prompt=(
                 f"Invoke the folder-defined {agent} agent using only resources "
                 "granted to its Databricks App identity."
@@ -78,7 +78,7 @@ def gateway_agent(
             app_name=app_name,
             service_name=service_name,
             connection_name=connection_name,
-            base_path="/api/invocations",
+            base_path="/responses",
             system_prompt=(
                 "You are a concise assistant. Use only the resources granted "
                 "to your Databricks App identity."
