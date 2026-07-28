@@ -120,10 +120,10 @@ def test_agent_service_inventory_names_and_connection() -> None:
         "prod_sandpit_langchain_agent",
         "prod_sandpit_langchain_agent_connection",
     )
-    assert module._generated_inventory_names("dev", "minimal-assistant") == (
-        "dev-agent-minimal-assistant",
-        "dev_agent_minimal_assistant",
-        "dev_agent_minimal_assistant_connection",
+    assert module._generated_inventory_names("dev", "langchain-assistant") == (
+        "dev-agent-langchain-assistant",
+        "dev_agent_langchain_assistant",
+        "dev_agent_langchain_assistant_connection",
     )
     options = module._connection_options(
         "https://agent.example/",

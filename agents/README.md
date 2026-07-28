@@ -15,7 +15,7 @@ agents/<name>/
 The manifest is deliberately smaller than `app.yaml`:
 
 ```yaml
-name: minimal-assistant
+name: my-agent
 model: default
 entrypoint: agent:invoke
 ```
@@ -46,7 +46,7 @@ All four examples implement the same one-function contract:
 
 | Folder | Implementation |
 | --- | --- |
-| [`minimal-assistant`](minimal-assistant) | LangChain `ChatDatabricks` |
+| [`langchain-assistant`](langchain-assistant) | LangChain `ChatDatabricks` |
 | [`gemini-assistant`](gemini-assistant) | Native Google Gen AI SDK |
 | [`claude-assistant`](claude-assistant) | Native Anthropic SDK |
 | [`openai-assistant`](openai-assistant) | Databricks-authenticated OpenAI SDK |
