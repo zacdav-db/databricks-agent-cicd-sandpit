@@ -4,6 +4,12 @@ bundle:
 
 include:
   - resources/*.yml
+  - .generated/bundle/*.yml
+
+sync:
+  include:
+    - .generated/agents/**
+    - .generated/agent-index.json
 
 variables:
   catalog:

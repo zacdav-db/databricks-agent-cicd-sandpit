@@ -14,6 +14,9 @@ if [[ ! -x "${python_bin}" ]]; then
   exit 1
 fi
 
+printf 'Composing folder-defined agent resources\n'
+"${python_bin}" scripts/compose_agents.py
+
 printf 'Bootstrapping isolated %s Unity Catalog resources\n' "${target}"
 bootstrap_json="$(
   "${python_bin}" scripts/bootstrap_resources.py --target "${target}"
@@ -53,6 +56,11 @@ for app in mcp_server langchain_agent; do
   printf 'Starting %s in %s\n' "${app}" "${target}"
   databricks bundle run "${app}" "${bundle_args[@]}"
 done
+
+while IFS= read -r app; do
+  printf 'Starting %s in %s\n' "${app}" "${target}"
+  databricks bundle run "${app}" "${bundle_args[@]}"
+done < <(jq -r '.agents[].resource_key' .generated/agent-index.json)
 
 printf 'Registering the %s agent in Unity Catalog\n' "${target}"
 databricks bundle run register_uc_agent "${bundle_args[@]}"

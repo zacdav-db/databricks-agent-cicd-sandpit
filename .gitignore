@@ -1,4 +1,6 @@
 .databricks/
+.generated/
+.agent-build-*/
 .deploy-venv/
 .pytest_cache/
 .ruff_cache/
