@@ -64,6 +64,24 @@ deployment jobs cannot start before the scope is known. The deployment script
 recomputes the selection from the same immutable commit range as a
 defense-in-depth check.
 
+## Measured small-change baseline
+
+A one-line change to the existing LangChain example was promoted through both
+environments on 28 July 2026. In each run the selector returned only
+`langchain-assistant`; every sibling App kept its earlier update timestamp and
+remained `RUNNING`/`ACTIVE`.
+
+| Environment | Push to completion | DAB update | Deploy and verify |
+| --- | ---: | ---: | ---: |
+| [Development](https://github.com/zacdav-db/databricks-agent-cicd-sandpit/actions/runs/30329599152) | 2m 57s | 18s | 1m 35s |
+| [Production](https://github.com/zacdav-db/databricks-agent-cicd-sandpit/actions/runs/30329830112) | 3m 07s | 19s | 1m 37s |
+
+`Deploy and verify` includes target composition, DAB validation, App update,
+Unity Catalog Agent Service registration, an invocation, and confirmation that
+the invocation wrote an MLflow trace. A new App takes longer because Databricks
+must create and start its compute; these figures measure the representative
+update path for an already-running App.
+
 ## Production promotion
 
 Production requires an internal pull request whose head is the repository's
