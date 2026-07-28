@@ -100,10 +100,20 @@ def _wait_for_trace(
     trace_table: str,
     raw_trace_id: str,
     timeout: int = 180,
-) -> None:
+    root_span_name: str | None = None,
+) -> dict[str, int]:
     trace_id = raw_trace_id.rsplit("/", maxsplit=1)[-1]
     if not trace_id.isalnum():
         raise RuntimeError(f"Unexpected trace ID format: {trace_id}")
+    child_expression = "0"
+    if root_span_name:
+        escaped_root_name = root_span_name.replace("'", "''")
+        child_expression = (
+            "COUNT_IF(parent_span_id = ("
+            f"SELECT MAX(span_id) FROM {trace_table} "
+            f"WHERE trace_id = '{trace_id}' AND name = '{escaped_root_name}'"
+            "))"
+        )
     deadline = time.monotonic() + timeout
     trace_result: dict[str, Any] | None = None
     while time.monotonic() < deadline:
@@ -111,15 +121,31 @@ def _wait_for_trace(
             client,
             warehouse_id,
             (
-                f"SELECT COUNT(*) AS trace_rows FROM {trace_table} "
+                "SELECT COUNT(*) AS trace_rows, "
+                f"{child_expression} AS direct_child_rows FROM {trace_table} "
                 f"WHERE trace_id = '{trace_id}'"
             ),
         )
         rows = trace_result.get("result", {}).get("data_array", [])
-        if rows and int(rows[0][0]) > 0:
-            return
+        if rows:
+            counts = {
+                "trace_rows": int(rows[0][0]),
+                "direct_child_rows": int(rows[0][1]),
+            }
+            if counts["trace_rows"] > 0 and (
+                root_span_name is None or counts["direct_child_rows"] > 0
+            ):
+                return counts
         time.sleep(10)
-    raise RuntimeError(f"No trace rows appeared in {trace_table}: {trace_result}")
+    expected = (
+        f"a child of {root_span_name!r}"
+        if root_span_name
+        else "at least one trace row"
+    )
+    raise RuntimeError(
+        f"Trace {trace_id} did not contain {expected} in {trace_table}: "
+        f"{trace_result}",
+    )
 
 
 def _mcp_request(

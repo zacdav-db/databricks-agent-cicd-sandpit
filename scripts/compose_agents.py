@@ -27,8 +27,17 @@ RESERVED_NAMES = {"langchain-agent", "mcp-tools", "omnigent"}
 RESERVED_PATHS = {
     "_agent_runtime",
     "_agent_runtime.py",
+    "_platform_tracing",
+    "_platform_tracing.py",
 }
-PLATFORM_PACKAGES = {"fastapi", "mlflow", "pydantic", "uvicorn"}
+PLATFORM_PACKAGES = {
+    "anyio",
+    "fastapi",
+    "mlflow",
+    "mlflow-tracing",
+    "pydantic",
+    "uvicorn",
+}
 SECRET_SUFFIXES = {".key", ".p12", ".pem"}
 MAX_FILE_BYTES = 1_000_000
 MAX_AGENT_BYTES = 5_000_000
@@ -487,6 +496,10 @@ def compose(root: Path) -> dict[str, Any]:
             shutil.copy2(
                 root / "agent_platform" / "runtime.py",
                 destination / "_agent_runtime.py",
+            )
+            shutil.copy2(
+                root / "agent_platform" / "_platform_tracing.py",
+                destination / "_platform_tracing.py",
             )
             dependency_lines = [platform_requirements, *agent.requirements]
             (destination / "requirements.txt").write_text(
