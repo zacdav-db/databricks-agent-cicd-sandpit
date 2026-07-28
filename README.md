@@ -1,12 +1,17 @@
 # Databricks agent CI/CD sandpit
 
-A working reference for deploying agents and governed tools to Databricks Apps
-with a Databricks Asset Bundle (DAB) and GitHub Actions.
+A working reference for deploying agents and governed tools to
+[Databricks Apps](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/)
+with
+[Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/)
+(DABs, formerly Databricks Asset Bundles) and
+[GitHub Actions](https://docs.databricks.com/aws/en/dev-tools/ci-cd/github).
 
 This repository is an example of how teams can:
 
 - Build agents on Databricks, deploy them through Databricks Apps, and register
-  the deployed agents and governed tools in Unity Catalog.
+  the deployed agents and governed tools in
+  [Unity Catalog](https://docs.databricks.com/aws/en/data-governance/unity-catalog/).
 - Promote applications and agents through a protected dev-to-prod process
   using GitHub Actions and DABs.
 - Offer a centrally managed deployment path where authors add a small agent
@@ -42,7 +47,9 @@ def invoke(message: str) -> str:
 
 The function may call an existing LangChain, OpenAI Agents SDK, or custom
 agent. The platform normalizes only this invocation boundary and supplies the
-approved model endpoint as `MODEL_ENDPOINT`.
+approved
+[Foundation Model API](https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis)
+endpoint as `MODEL_ENDPOINT`.
 
 After completing the
 [local setup](docs/operations/deployment.md#setup), run the contract checks:
@@ -76,8 +83,10 @@ The repository is easier to understand as three separate views.
 
 ### Runtime example
 
-The original example connects three Apps with a managed Unity Catalog tool
-surface. The LangChain App owns model calls and MLflow tracing.
+The original example connects three Apps with a
+[Databricks managed MCP server](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp)
+over Unity Catalog functions. The LangChain App owns model calls and
+[MLflow Tracing](https://docs.databricks.com/aws/en/mlflow3/genai/tracing/).
 
 ```mermaid
 flowchart LR
@@ -163,17 +172,22 @@ Each target currently has seven App definitions:
 
 | App | Role |
 | --- | --- |
-| `*-sandpit-langchain-agent` | LangChain agent with managed UC function tools and MLflow tracing. |
-| `*-sandpit-mcp-tools` | Custom Streamable HTTP MCP server. |
-| `*-sandpit-omnigent` | Policy-controlled Omnigent supervisor. |
+| `*-sandpit-langchain-agent` | LangChain agent with [managed Unity Catalog function tools](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp#unity-catalog-functions) and MLflow tracing. |
+| `*-sandpit-mcp-tools` | Custom [Model Context Protocol (MCP)](https://docs.databricks.com/aws/en/agents/mcp/) server. |
+| `*-sandpit-omnigent` | Policy-controlled [Omnigent](https://docs.databricks.com/aws/en/omnigent/) supervisor. |
 | `*-agent-langchain-assistant` | Folder agent using LangChain `ChatDatabricks`. |
 | `*-agent-gemini-assistant` | Folder agent using the native Google Gen AI SDK. |
 | `*-agent-claude-assistant` | Folder agent using the native Anthropic SDK. |
 | `*-agent-openai-assistant` | Folder agent using the OpenAI SDK surface. |
 
 Dev and prod use the same sandpit workspace but have different App names,
-schemas, functions, experiments, trace tables, Agent Services, and bundle
-paths.
+schemas, functions, experiments, trace tables,
+[Agent Services in Unity Catalog](https://docs.databricks.com/aws/en/ai-gateway/agent-services),
+and bundle paths.
+
+[Unity AI Gateway](https://docs.databricks.com/aws/en/ai-gateway/) provides the
+broader governance and monitoring surface for Apps, model endpoints, MCP
+servers, and agents.
 
 ## Repository map
 
