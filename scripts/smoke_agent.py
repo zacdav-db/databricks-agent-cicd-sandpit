@@ -8,7 +8,6 @@ import os
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
-
 from smoke_test import _api_json, _wait_for_app, _wait_for_trace
 
 

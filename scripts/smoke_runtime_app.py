@@ -10,7 +10,6 @@ from typing import Any
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
-
 from smoke_test import (
     _api_json,
     _find_nonempty_string,
