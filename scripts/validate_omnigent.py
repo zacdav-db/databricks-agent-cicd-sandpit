@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 from omnigent.spec import load
-from omnigent.tools.local import load_local_python_tools
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT = ROOT / "src" / "omnigent_app" / "sandpit_supervisor"
@@ -44,17 +43,18 @@ def main() -> None:
             "The LangChain delegate must not use an MCP bridge: "
             f"{delegate_mcp_servers}",
         )
-    delegate_root = AGENT / "agents" / "databricks_agent"
-    tool_names = {
-        tool.name()
-        for tool in load_local_python_tools(
-            databricks_agent.local_tools,
-            delegate_root,
-        )
+    delegate_tools = {
+        tool.name: tool
+        for tool in databricks_agent.local_tools
     }
-    if tool_names != {"invoke_langchain_agent"}:
+    if set(delegate_tools) != {"invoke_langchain_agent"}:
         raise RuntimeError(
-            f"The LangChain delegate has unexpected local tools: {tool_names}",
+            f"The LangChain delegate has unexpected tools: {set(delegate_tools)}",
+        )
+    delegate_tool = delegate_tools["invoke_langchain_agent"]
+    if delegate_tool.path != "agent_tools.invoke_langchain_agent":
+        raise RuntimeError(
+            f"The LangChain delegate has an unexpected callable: {delegate_tool.path}",
         )
 
     policies = {

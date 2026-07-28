@@ -574,25 +574,12 @@ def test_omnigent_launcher_renders_direct_langchain_delegate(
 
     bundle = module._render_agent_bundle()
     try:
-        config = (bundle / "config.yaml").read_text(encoding="utf-8")
-        delegate = (
-            bundle / "agents" / "databricks_agent" / "config.yaml"
-        ).read_text(encoding="utf-8")
-        delegate_tool = (
-            bundle
-            / "agents"
-            / "databricks_agent"
-            / "tools"
-            / "python"
-            / "invoke_langchain_agent.py"
-        ).read_text(encoding="utf-8")
+        config = (bundle / "sandpit_supervisor.yaml").read_text(encoding="utf-8")
         assert "model-endpoint" in config
-        assert "@tool" in delegate_tool
-        assert "def invoke_langchain_agent" in delegate_tool
+        assert "type: agent" in config
+        assert "agent_tools.invoke_langchain_agent" in config
         assert "type: mcp" not in config
-        assert "type: mcp" not in delegate
         assert "${" not in config
-        assert "${" not in delegate
     finally:
         shutil.rmtree(bundle.parent)
 
@@ -617,22 +604,9 @@ def test_omnigent_launcher_uses_one_identity_behind_app_auth(
 def test_omnigent_direct_tool_invokes_langchain_app(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setitem(
-        sys.modules,
-        "omnigent_client",
-        SimpleNamespace(tool=lambda function: function),
-    )
     module = _load(
         "omnigent_agent_tools",
-        ROOT
-        / "src"
-        / "omnigent_app"
-        / "sandpit_supervisor"
-        / "agents"
-        / "databricks_agent"
-        / "tools"
-        / "python"
-        / "invoke_langchain_agent.py",
+        ROOT / "src" / "omnigent_app" / "agent_tools.py",
     )
     calls: list[tuple[str, str, dict[str, str]]] = []
 

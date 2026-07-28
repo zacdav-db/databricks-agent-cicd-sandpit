@@ -1,4 +1,4 @@
-"""Tool for delegating a request to the deployed LangChain App."""
+"""Deployment-owned tool for delegating to the LangChain App."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from functools import lru_cache
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
-from omnigent_client import tool
 
 
 @lru_cache(maxsize=1)
@@ -20,7 +19,6 @@ def _workspace_client() -> WorkspaceClient:
     )
 
 
-@tool
 def invoke_langchain_agent(message: str) -> dict[str, str]:
     """Invoke LangChain and return its answer and MLflow trace ID.
 
