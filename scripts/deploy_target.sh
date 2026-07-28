@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-target="${1:?Usage: deploy_target.sh <dev|prod>}"
+target="${1:?Usage: deploy_target.sh <dev|prod> <base-sha> <head-sha>}"
+base_sha="${2:?Usage: deploy_target.sh <dev|prod> <base-sha> <head-sha>}"
+head_sha="${3:?Usage: deploy_target.sh <dev|prod> <base-sha> <head-sha>}"
 python_bin="${PYTHON_BIN:-python}"
 export PYTHON_BIN="${python_bin}"
 
@@ -16,6 +18,18 @@ fi
 
 printf 'Composing folder-defined agent resources\n'
 "${python_bin}" scripts/compose_agents.py
+
+selection="$(
+  "${python_bin}" scripts/select_deployments.py \
+    --base "${base_sha}" \
+    --head "${head_sha}"
+)"
+printf 'Selected deployments: %s\n' "${selection}"
+if [[ "$(jq -r '.apps | length' <<<"${selection}")" == "0" ]] &&
+  [[ "$(jq -r '.agents | length' <<<"${selection}")" == "0" ]]; then
+  printf 'No deployable App changed; skipping Databricks deployment\n'
+  exit 0
+fi
 
 printf 'Bootstrapping isolated %s Unity Catalog resources\n' "${target}"
 bootstrap_json="$(
@@ -32,41 +46,18 @@ export UC_SCHEMA="${schema}"
 export UC_COST_FUNCTION="${cost_function_name}"
 export UC_TIME_FUNCTION="${time_function_name}"
 export UC_TRACE_TABLE_PREFIX="${table_prefix}"
+export DATABRICKS_WAREHOUSE_ID="f7a871ffa2a9ab80"
 
-bundle_args=(
-  -t "${target}"
-  --var "experiment_id=${experiment_id}"
-  --var "catalog=${catalog}"
-  --var "schema=${schema}"
-  --var "uc_function_name=${cost_function_name}"
-  --var "uc_time_function_name=${time_function_name}"
-  --var "trace_table_prefix=${table_prefix}"
-)
+while IFS= read -r component; do
+  scripts/deploy_runtime_app.sh \
+    "${target}" \
+    "${component}" \
+    "${experiment_id}"
+done < <(jq -r '.apps[]' <<<"${selection}")
 
-printf 'Validating %s bundle\n' "${target}"
-databricks bundle validate "${bundle_args[@]}"
-
-printf 'Deploying %s bundle\n' "${target}"
-databricks bundle deploy \
-  "${bundle_args[@]}" \
-  --auto-approve \
-  --force-lock
-
-for app in mcp_server langchain_agent; do
-  printf 'Starting %s in %s\n' "${app}" "${target}"
-  databricks bundle run "${app}" "${bundle_args[@]}"
-done
-
-while IFS= read -r app; do
-  printf 'Starting %s in %s\n' "${app}" "${target}"
-  databricks bundle run "${app}" "${bundle_args[@]}"
-done < <(jq -r '.agents[].resource_key' .generated/agent-index.json)
-
-printf 'Registering the %s agent in Unity Catalog\n' "${target}"
-databricks bundle run register_uc_agent "${bundle_args[@]}"
-
-printf 'Starting omnigent in %s\n' "${target}"
-databricks bundle run omnigent "${bundle_args[@]}"
-
-printf 'Smoke testing %s\n' "${target}"
-databricks bundle run smoke_test "${bundle_args[@]}"
+while IFS= read -r agent_name; do
+  scripts/deploy_agent.sh \
+    "${target}" \
+    "${agent_name}" \
+    "${experiment_id}"
+done < <(jq -r '.agents[]' <<<"${selection}")

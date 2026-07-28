@@ -228,13 +228,14 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
         "bootstrap_target_defaults",
         ROOT / "scripts" / "bootstrap_resources.py",
     )
-    bundle = yaml.safe_load((ROOT / "databricks.yml").read_text(encoding="utf-8"))
-    resources = yaml.safe_load(
-        (ROOT / "resources" / "apps.yml").read_text(encoding="utf-8"),
+    langchain_bundle = yaml.safe_load(
+        (ROOT / "src" / "langchain_agent" / "databricks.yml").read_text(
+            encoding="utf-8",
+        ),
     )
 
     for target in ("dev", "prod"):
-        variables = bundle["targets"][target]["variables"]
+        variables = langchain_bundle["targets"][target]["variables"]
         defaults = bootstrap._target_defaults(target)
         assert variables["resource_prefix"] == target
         assert variables["schema"] == defaults["schema"]
@@ -242,12 +243,25 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
         assert variables["uc_function_name"] == defaults["cost_function_name"]
         assert variables["uc_time_function_name"] == defaults["time_function_name"]
 
-    apps = resources["resources"]["apps"]
-    assert apps["langchain_agent"]["name"] == (
+    assert langchain_bundle["resources"]["apps"]["langchain_agent"]["name"] == (
         "${var.resource_prefix}-sandpit-langchain-agent"
     )
-    assert apps["mcp_server"]["name"] == "${var.resource_prefix}-sandpit-mcp-tools"
-    assert apps["omnigent"]["name"] == "${var.resource_prefix}-sandpit-omnigent"
+    mcp_bundle = yaml.safe_load(
+        (ROOT / "src" / "mcp_server" / "databricks.yml").read_text(
+            encoding="utf-8",
+        ),
+    )
+    omnigent_bundle = yaml.safe_load(
+        (ROOT / "src" / "omnigent_app" / "databricks.yml").read_text(
+            encoding="utf-8",
+        ),
+    )
+    assert mcp_bundle["resources"]["apps"]["mcp_server"]["name"] == (
+        "${var.resource_prefix}-sandpit-mcp-tools"
+    )
+    assert omnigent_bundle["resources"]["apps"]["omnigent"]["name"] == (
+        "${var.resource_prefix}-sandpit-omnigent"
+    )
 
 
 def test_bootstrap_creates_target_schema_before_functions(
@@ -316,8 +330,12 @@ def test_ci_promotes_dev_to_main_before_production() -> None:
         "Resolve App dependencies for Linux and Python 3.11"
     ]
     assert quality_steps["Compile generated Apps with Python 3.11"] == (
-        "python -m compileall -q .generated/agents"
+        "python -m compileall -q .generated/bundles"
     )
+    for job_name in ("deploy-dev", "deploy-prod"):
+        deploy_step = workflow["jobs"][job_name]["steps"][-1]
+        assert deploy_step["env"]["BASE_SHA"] == "${{ github.event.before }}"
+        assert deploy_step["env"]["HEAD_SHA"] == "${{ github.sha }}"
     assert "Block implicit agent deletion or rename" in quality_steps
 
 

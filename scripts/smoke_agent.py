@@ -1,0 +1,73 @@
+"""Focused acceptance test for one folder-defined agent App."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.core import Config
+
+from smoke_test import _api_json, _wait_for_app, _wait_for_trace
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--agent", required=True)
+    parser.add_argument("--target", required=True, choices=("dev", "prod"))
+    parser.add_argument("--profile")
+    parser.add_argument(
+        "--warehouse-id",
+        default=os.getenv("DATABRICKS_WAREHOUSE_ID", "f7a871ffa2a9ab80"),
+    )
+    parser.add_argument("--trace-table")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
+    schema = os.getenv("UC_SCHEMA", f"{args.target}_agent_cicd")
+    trace_prefix = os.getenv(
+        "UC_TRACE_TABLE_PREFIX",
+        f"{args.target}_sandpit_agent_cicd",
+    )
+    trace_table = (
+        args.trace_table or f"{catalog}.{schema}.{trace_prefix}_otel_spans"
+    )
+    client = WorkspaceClient(
+        config=Config(profile=args.profile, http_timeout_seconds=180),
+    )
+    app_name = f"{args.target}-agent-{args.agent}"
+    app_url = _wait_for_app(client, app_name)
+    _api_json(client, "GET", f"{app_url}/api/health")
+    result = _api_json(
+        client,
+        "POST",
+        f"{app_url}/api/invocations",
+        body={"input": "Reply briefly to confirm this agent is healthy."},
+    )
+    if not result.get("output") or not result.get("trace_id"):
+        raise RuntimeError(f"{app_name} returned an invalid result: {result}")
+    _wait_for_trace(
+        client,
+        args.warehouse_id,
+        trace_table,
+        result["trace_id"],
+    )
+    print(
+        json.dumps(
+            {
+                "app": app_name,
+                "output": result["output"],
+                "trace_id": result["trace_id"],
+                "trace_table": trace_table,
+            },
+            sort_keys=True,
+        ),
+    )
+
+
+if __name__ == "__main__":
+    main()

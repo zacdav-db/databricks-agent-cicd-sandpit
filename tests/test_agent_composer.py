@@ -59,23 +59,36 @@ def test_compose_agents_is_deterministic_and_platform_owned(tmp_path: Path) -> N
     git_marker.write_text("repository metadata", encoding="utf-8")
 
     index = compose_agents.compose(root)
-    first_bundle = (root / ".generated/bundle/generated_agents.yml").read_bytes()
+    bundle_path = root / ".generated/bundles/small-agent/databricks.yml"
+    first_bundle = bundle_path.read_bytes()
+    first_app = (
+        root / ".generated/bundles/small-agent/app/_agent_runtime.py"
+    ).read_bytes()
     first_index = (root / ".generated/agent-index.json").read_bytes()
     compose_agents.compose(root)
 
-    assert first_bundle == (
-        root / ".generated/bundle/generated_agents.yml"
+    assert first_bundle == bundle_path.read_bytes()
+    assert first_app == (
+        root / ".generated/bundles/small-agent/app/_agent_runtime.py"
     ).read_bytes()
     assert first_index == (root / ".generated/agent-index.json").read_bytes()
     assert git_marker.read_text(encoding="utf-8") == "repository metadata"
     assert (root / "agents/small-agent/agent.py").is_file()
-    assert index["contract_version"] == 2
+    assert index["contract_version"] == 3
     assert index["agents"][0]["resource_key"] == "generated_agent_small_agent"
+    assert index["agents"][0]["bundle_path"] == (
+        ".generated/bundles/small-agent"
+    )
 
     bundle = yaml.safe_load(first_bundle)
+    assert bundle["bundle"]["name"] == "sandpit-folder-agent-small-agent"
+    assert bundle["targets"]["dev"]["workspace"]["root_path"] == (
+        "/Workspace/Users/${workspace.current_user.userName}"
+        "/.bundle/${bundle.name}/${bundle.target}"
+    )
     app = bundle["resources"]["apps"]["generated_agent_small_agent"]
     assert app["name"] == "${var.resource_prefix}-agent-small-agent"
-    assert app["source_code_path"] == "../agents/small-agent"
+    assert app["source_code_path"] == "./app"
     assert app["config"]["command"][1] == "_agent_runtime:app"
     assert app["resources"][0]["serving_endpoint"]["name"] == (
         "databricks-claude-sonnet-4-5"
@@ -89,7 +102,7 @@ def test_compose_agents_is_deterministic_and_platform_owned(tmp_path: Path) -> N
         "MLFLOW_TRACKING_URI",
         "MODEL_ENDPOINT",
     }
-    generated = root / ".generated/agents/small-agent"
+    generated = root / ".generated/bundles/small-agent/app"
     assert (generated / "_agent_runtime.py").is_file()
     assert not (generated / "agent_sdk").exists()
     assert not (generated / "agent.yaml").exists()
@@ -218,6 +231,30 @@ def test_repository_example_composes() -> None:
         "gemini": "databricks-gemini-3-1-flash-lite",
         "openai": "databricks-gpt-5-mini",
     }
+
+
+def test_every_app_has_one_unique_bundle_state() -> None:
+    compose_agents.compose(ROOT)
+    bundle_paths = [
+        ROOT / "src/langchain_agent/databricks.yml",
+        ROOT / "src/mcp_server/databricks.yml",
+        ROOT / "src/omnigent_app/databricks.yml",
+        *sorted((ROOT / ".generated/bundles").glob("*/databricks.yml")),
+    ]
+    bundles = [
+        yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in bundle_paths
+    ]
+    bundle_names = [bundle["bundle"]["name"] for bundle in bundles]
+    assert len(bundle_names) == 7
+    assert len(set(bundle_names)) == len(bundle_names)
+    assert all(len(bundle["resources"]["apps"]) == 1 for bundle in bundles)
+    assert all(
+        bundle["targets"]["dev"]["workspace"]["root_path"].endswith(
+            "/.bundle/${bundle.name}/${bundle.target}",
+        )
+        for bundle in bundles
+    )
 
 
 @pytest.mark.parametrize(

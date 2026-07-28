@@ -28,11 +28,15 @@ def _client() -> genai.Client:
 
 def invoke(message: str) -> str:
     """Answer one message with the manifest-selected Gemini model."""
-    response = _client().models.generate_content(
-        model=os.environ["MODEL_ENDPOINT"],
-        contents=message,
-        config=types.GenerateContentConfig(max_output_tokens=300),
-    )
+    client = _client()
+    try:
+        response = client.models.generate_content(
+            model=os.environ["MODEL_ENDPOINT"],
+            contents=message,
+            config=types.GenerateContentConfig(max_output_tokens=300),
+        )
+    finally:
+        client.close()
     text = response.text
     if not text:
         raise RuntimeError("Gemini returned no text.")

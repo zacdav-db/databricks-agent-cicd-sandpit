@@ -106,19 +106,27 @@ CI/CD is a branch promotion flow. Production is reachable only from the
 repository's `dev` branch.
 
 ```mermaid
-flowchart LR
+flowchart TB
     Feature["Feature branch"]
     DevPR["PR to dev"]
     DevGate["PR + quality"]
     Dev["dev"]
-    DevDeploy["Deploy dev"]
+    DevSelect{"Changed deployment unit"}
+    DevAgent["Deploy changed Agent DAB"]
+    DevCore["Deploy changed runtime App DAB"]
     ProdPR["PR: dev to main"]
     ProdGate["Source check + quality"]
     Main["main"]
-    ProdDeploy["Deploy prod"]
+    ProdSelect{"Changed deployment unit"}
+    ProdAgent["Deploy changed Agent DAB"]
+    ProdCore["Deploy changed runtime App DAB"]
 
-    Feature --> DevPR --> DevGate --> Dev --> DevDeploy
-    Dev --> ProdPR --> ProdGate --> Main --> ProdDeploy
+    Feature --> DevPR --> DevGate --> Dev --> DevSelect
+    DevSelect --> DevAgent
+    DevSelect --> DevCore
+    Dev --> ProdPR --> ProdGate --> Main --> ProdSelect
+    ProdSelect --> ProdAgent
+    ProdSelect --> ProdCore
 ```
 
 [CI/CD, authentication, runner, and isolation details](docs/architecture/cicd.md)
@@ -126,14 +134,15 @@ flowchart LR
 ### Folder-defined agent contract
 
 The author supplies code and three manifest fields. The platform composes the
-deployable App and DAB resource.
+deployable App and a dedicated DAB. Agent folders never share deployment
+state.
 
 ```mermaid
 flowchart LR
     Folder["Agent folder"]
     Platform["Runtime + model policy"]
     Composer["Validate and compose"]
-    Generated["Generated App + DAB resource"]
+    Generated["Generated App + dedicated DAB state"]
     Dev["dev App"]
     Prod["prod App"]
 
@@ -171,9 +180,7 @@ paths.
 | [`agents/`](agents) | Minimal author-owned agent folders. |
 | [`agent_platform/`](agent_platform) | Platform model policy and injected App runtime. |
 | [`scripts/compose_agents.py`](scripts/compose_agents.py) | Strict contract validation and deterministic DAB composition. |
-| [`resources/apps.yml`](resources/apps.yml) | The three explicit example App resources. |
-| [`src/`](src) | LangChain, custom MCP, and Omnigent implementations. |
-| [`databricks.yml`](databricks.yml) | DAB variables, scripts, and dev/prod targets. |
+| [`src/`](src) | LangChain, custom MCP, and Omnigent implementations, each with its own DAB. |
 | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) | Quality, promotion, and deployment workflow. |
 
 ## More documentation

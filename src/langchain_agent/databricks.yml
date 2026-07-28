@@ -1,35 +1,54 @@
+bundle:
+  name: sandpit-langchain-agent
+  databricks_cli_version: ">= 1.7.0, < 2.0.0"
+
+variables:
+  catalog:
+    default: zacdav_sandpit_catalog
+  schema: {}
+  resource_prefix: {}
+  warehouse_id:
+    default: f7a871ffa2a9ab80
+  model_endpoint:
+    default: databricks-claude-sonnet-4-5
+  experiment_id: {}
+  trace_table_prefix: {}
+  uc_function_name: {}
+  uc_time_function_name: {}
+
+targets:
+  dev:
+    default: true
+    mode: development
+    variables:
+      resource_prefix: dev
+      schema: dev_agent_cicd
+      trace_table_prefix: dev_sandpit_agent_cicd
+      uc_function_name: dev_estimate_project_cost
+      uc_time_function_name: dev_current_utc_timestamp
+    workspace:
+      host: https://fevm-zacdav-sandpit.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+  prod:
+    mode: production
+    variables:
+      resource_prefix: prod
+      schema: prod_agent_cicd
+      trace_table_prefix: prod_sandpit_agent_cicd
+      uc_function_name: prod_estimate_project_cost
+      uc_time_function_name: prod_current_utc_timestamp
+    workspace:
+      host: https://fevm-zacdav-sandpit.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
 resources:
   apps:
-    mcp_server:
-      name: ${var.resource_prefix}-sandpit-mcp-tools
-      description: Custom Streamable HTTP MCP server deployed by a Databricks Asset Bundle.
-      source_code_path: ../src/mcp_server
-      config:
-        command: ["python", "server.py"]
-        env:
-          - name: LANGCHAIN_AGENT_APP_NAME
-            value_from: langchain_agent_app
-      resources:
-        - name: langchain_agent_app
-          app:
-            name: ${resources.apps.langchain_agent.name}
-            permission: CAN_USE
-      permissions:
-        - level: CAN_USE
-          group_name: users
-
     langchain_agent:
       name: ${var.resource_prefix}-sandpit-langchain-agent
       description: LangChain tool-calling agent with MLflow traces stored in Unity Catalog.
-      source_code_path: ../src/langchain_agent
+      source_code_path: .
       config:
-        command:
-          - uvicorn
-          - app:app
-          - --host
-          - 0.0.0.0
-          - --port
-          - "8000"
+        command: [uvicorn, "app:app", --host, 0.0.0.0, --port, "8000"]
         env:
           - name: MLFLOW_TRACKING_URI
             value: databricks
@@ -111,42 +130,3 @@ resources:
       permissions:
         - level: CAN_USE
           group_name: users
-
-    omnigent:
-      name: ${var.resource_prefix}-sandpit-omnigent
-      description: Omnigent server with a pre-registered YAML supervisor agent.
-      source_code_path: ../src/omnigent_app
-      config:
-        command: ["python", "launch.py"]
-        env:
-          - name: MODEL_ENDPOINT
-            value_from: llm
-          - name: DATABRICKS_WAREHOUSE_ID
-            value_from: warehouse
-          - name: UC_FUNCTION_FULL_NAME
-            value_from: project_cost_function
-          - name: CUSTOM_MCP_APP_NAME
-            value_from: custom_mcp_app
-          - name: OMNIGENT_HOST_OWNER
-            value: zachary.davies@databricks.com
-      resources:
-        - name: llm
-          serving_endpoint:
-            name: ${var.model_endpoint}
-            permission: CAN_QUERY
-        - name: warehouse
-          sql_warehouse:
-            id: ${var.warehouse_id}
-            permission: CAN_USE
-        - name: project_cost_function
-          uc_securable:
-            securable_full_name: ${var.catalog}.${var.schema}.${var.uc_function_name}
-            securable_type: FUNCTION
-            permission: EXECUTE
-        - name: custom_mcp_app
-          app:
-            name: ${resources.apps.mcp_server.name}
-            permission: CAN_USE
-      permissions:
-        - level: CAN_USE
-          user_name: zachary.davies@databricks.com

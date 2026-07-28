@@ -1,7 +1,7 @@
 # Runtime example
 
-This example proves that several agent and tool styles can coexist in one
-Databricks Asset Bundle while retaining separate App identities and governed
+This example shows how several agent and tool styles can coexist while each
+Databricks App retains its own Asset Bundle state, App identity, and governed
 resource bindings.
 
 The same topology is deployed twice. `dev` and `prod` share the sandpit
@@ -52,7 +52,7 @@ flowchart LR
 
 ## Unity Catalog mapping
 
-The DAB maps each supported object at the strongest level currently available:
+Each DAB maps its supported objects at the strongest level currently available:
 
 - The cost and current-time tools are three-level Unity Catalog `FUNCTION`
   securables. Agent Apps receive `EXECUTE` through DAB `uc_securable` bindings
@@ -68,8 +68,8 @@ The DAB maps each supported object at the strongest level currently available:
   cross-target table.
 
 DAB CLI `1.7.x` has no first-class resource types for UC functions, HTTP
-connections, Agent Services, or MCP Services. The bundle therefore combines
-native App resources with two DAB scripts:
+connections, Agent Services, or MCP Services. Deployment therefore combines
+native App resources with two platform scripts:
 
 - `bootstrap_resources.py` creates the target schema, functions, and MLflow
   experiment before App bindings are deployed.
@@ -93,9 +93,9 @@ Catalog OpenTelemetry tables:
 | prod | `/Shared/prod-sandpit-agent-cicd-traces` | `zacdav_sandpit_catalog.prod_agent_cicd` | `prod_sandpit_agent_cicd_otel_*` |
 
 Each prefix expands to `annotations`, `logs`, `metrics`, and `spans`. Nothing
-in either target binds to the other target's schema. The deployment smoke test
-invokes every agent and waits until its trace is queryable in the target's
-spans table.
+in either target binds to the other target's schema. Each deployment runs a
+focused smoke test for only the selected App; agent tests wait until their
+trace is queryable in the target's spans table.
 
 ## Omnigent behavior
 

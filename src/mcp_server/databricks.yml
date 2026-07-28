@@ -1,0 +1,46 @@
+bundle:
+  name: sandpit-mcp-tools
+  databricks_cli_version: ">= 1.7.0, < 2.0.0"
+
+variables:
+  resource_prefix: {}
+  langchain_agent_app_name: {}
+
+targets:
+  dev:
+    default: true
+    mode: development
+    variables:
+      resource_prefix: dev
+      langchain_agent_app_name: dev-sandpit-langchain-agent
+    workspace:
+      host: https://fevm-zacdav-sandpit.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+  prod:
+    mode: production
+    variables:
+      resource_prefix: prod
+      langchain_agent_app_name: prod-sandpit-langchain-agent
+    workspace:
+      host: https://fevm-zacdav-sandpit.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+resources:
+  apps:
+    mcp_server:
+      name: ${var.resource_prefix}-sandpit-mcp-tools
+      description: Custom Streamable HTTP MCP server deployed by a Databricks Asset Bundle.
+      source_code_path: .
+      config:
+        command: [python, server.py]
+        env:
+          - name: LANGCHAIN_AGENT_APP_NAME
+            value_from: langchain_agent_app
+      resources:
+        - name: langchain_agent_app
+          app:
+            name: ${var.langchain_agent_app_name}
+            permission: CAN_USE
+      permissions:
+        - level: CAN_USE
+          group_name: users

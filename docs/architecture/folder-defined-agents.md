@@ -11,7 +11,7 @@ flowchart LR
     Policy["Platform policy<br/>model aliases"]
     Runtime["Platform runtime<br/>HTTP + tracing"]
     Composer["Validate and compose"]
-    Generated["Generated App source<br/>and DAB resource"]
+    Generated["Generated App source<br/>and dedicated DAB state"]
     Dev["dev App"]
     Prod["prod App"]
 
@@ -108,9 +108,10 @@ and
 1. Copies the validated author source.
 2. Injects the platform FastAPI runtime.
 3. Combines the exact-pinned platform and author dependencies.
-4. Emits a deterministic DAB App resource.
-5. Records the resource in a deployment index consumed by registration and
-   smoke tests.
+4. Emits a deterministic, single-App DAB.
+5. Gives the App a unique bundle name and workspace state root.
+6. Records the deployment unit in an index consumed by selection,
+   registration, and focused smoke tests.
 
 The platform owns:
 
@@ -121,6 +122,25 @@ The platform owns:
 - Target-specific experiment, warehouse, and Unity Catalog trace bindings.
 - App commands, names, identities, permissions, model grants, and DAB shape.
 - Dev/prod startup, Agent Service registration, and acceptance testing.
+
+## Deployment isolation
+
+Every folder gets a self-contained generated directory:
+
+```text
+.generated/bundles/minimal-assistant/
+├── databricks.yml
+└── app/
+```
+
+That bundle contains one App and has a unique `bundle.name`. CI maps changed
+paths to these bundle directories, so an agent-only pull request reconciles
+only its own App. It does not restart sibling compute or depend on sibling
+smoke tests.
+
+Shared runtime or model-policy changes are different by design: because their
+generated output affects every folder, CI fans out across all agent bundles
+sequentially.
 
 ## Validation boundary
 
@@ -147,8 +167,8 @@ trace is queryable in the target's Unity Catalog spans table.
 This is trusted-contributor Python, not a sandbox for untrusted code. Agent
 code runs with its App identity and can use whatever that identity is granted.
 
-One folder creates one App identity and scaling boundary. The Python may still
-coordinate several logical subagents internally.
+One folder creates one App identity, DAB state, deployment unit, and scaling
+boundary. The Python may still coordinate several logical subagents internally.
 
 The platform remains in this repository so the contract, runtime, DAB
 composition, and deployment logic change atomically. Once stable, the
