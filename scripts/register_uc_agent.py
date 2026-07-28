@@ -1,4 +1,4 @@
-"""Register the deployed LangChain App in the Unity Catalog Agent Service beta."""
+"""Register one deployed agent App in the Unity Catalog Agent Service beta."""
 
 from __future__ import annotations
 
@@ -193,6 +193,10 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(".generated/agent-index.json"),
     )
+    parser.add_argument(
+        "--agent",
+        help="Register only this folder-defined agent; omit for the LangChain App.",
+    )
     parser.add_argument("--profile")
     return parser.parse_args()
 
@@ -203,12 +207,14 @@ def main() -> None:
     workspace_client = (
         WorkspaceClient(profile=args.profile) if args.profile else WorkspaceClient()
     )
-    generated_index = json.loads(args.agent_index.read_text(encoding="utf-8"))
-    inventories = [_inventory_names(args.target)]
-    inventories.extend(
-        _generated_inventory_names(args.target, agent["name"])
-        for agent in generated_index["agents"]
-    )
+    if args.agent:
+        generated_index = json.loads(args.agent_index.read_text(encoding="utf-8"))
+        known_agents = {agent["name"] for agent in generated_index["agents"]}
+        if args.agent not in known_agents:
+            raise ValueError(f"Unknown folder-defined agent: {args.agent}")
+        inventories = [_generated_inventory_names(args.target, args.agent)]
+    else:
+        inventories = [_inventory_names(args.target)]
     registered: list[dict[str, str]] = []
     for app_name, service_name, connection_name in inventories:
         app = workspace_client.apps.get(name=app_name)

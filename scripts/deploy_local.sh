@@ -13,4 +13,7 @@ fi
 
 DATABRICKS_CONFIG_PROFILE="${profile}" \
 PYTHON_BIN="${python_bin}" \
-  scripts/deploy_target.sh "${target}"
+  scripts/deploy_target.sh \
+    "${target}" \
+    "0000000000000000000000000000000000000000" \
+    "HEAD"

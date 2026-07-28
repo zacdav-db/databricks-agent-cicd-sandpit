@@ -1,11 +1,8 @@
 # Folder agents execute as Databricks Apps and require platform-owner review.
 /agents/ @zacdav-db
 /agent_platform/ @zacdav-db
-/scripts/compose_agents.py @zacdav-db
-/scripts/validate_agent_dependencies.py @zacdav-db
-/scripts/deploy_target.sh @zacdav-db
-/scripts/register_uc_agent.py @zacdav-db
-/databricks.yml @zacdav-db
+/scripts/ @zacdav-db
+/src/**/databricks.yml @zacdav-db
 /.github/CODEOWNERS @zacdav-db
 /.github/workflows/ @zacdav-db
 /agent_platform/requirements.txt @zacdav-db

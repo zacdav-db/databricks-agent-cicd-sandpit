@@ -107,7 +107,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Compile generated Apps with Python 3.11
-        run: python -m compileall -q .generated/agents
+        run: python -m compileall -q .generated/bundles
 
   package-deployment:
     name: Package deployment dependencies
@@ -151,6 +151,8 @@ jobs:
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - uses: databricks/setup-cli@8b7b124dc4f5b9621e959ea61cf4d3dd4e421f67
         with:
           version: 1.7.0
@@ -171,8 +173,10 @@ jobs:
             -r requirements-deploy.txt
       - name: Deploy and verify development
         env:
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
           PYTHON_BIN: .deploy-venv/bin/python
-        run: scripts/deploy_target.sh dev
+        run: scripts/deploy_target.sh dev "${BASE_SHA}" "${HEAD_SHA}"
 
   deploy-prod:
     name: Deploy production
@@ -187,6 +191,8 @@ jobs:
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - uses: databricks/setup-cli@8b7b124dc4f5b9621e959ea61cf4d3dd4e421f67
         with:
           version: 1.7.0
@@ -207,5 +213,7 @@ jobs:
             -r requirements-deploy.txt
       - name: Deploy and verify production
         env:
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
           PYTHON_BIN: .deploy-venv/bin/python
-        run: scripts/deploy_target.sh prod
+        run: scripts/deploy_target.sh prod "${BASE_SHA}" "${HEAD_SHA}"

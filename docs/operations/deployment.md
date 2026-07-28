@@ -29,8 +29,9 @@ Run the same agent composition checks used by CI:
 .venv/bin/pytest
 ```
 
-`.generated/` is an ignored build directory. It contains generated App source,
-the composed DAB resource file, and the deployment index.
+`.generated/` is an ignored build directory. It contains one self-contained
+DAB and App source tree per folder, the deployment index, and a one-time legacy
+state description used only to transfer existing Apps safely.
 
 ## Deploy a target
 
@@ -43,20 +44,27 @@ Set `DATABRICKS_CONFIG_PROFILE` to override the default `sandpit` profile.
 The deployment is idempotent. It:
 
 1. Composes folder-defined agents.
-2. Creates or updates the target schema and two Unity Catalog functions.
-3. Creates or updates the target MLflow experiment and trace tables.
-4. Validates and deploys the DAB.
-5. Starts every App.
-6. Reconciles Unity Catalog Agent Services.
-7. Runs the full smoke suite.
+2. Selects changed deployment units.
+3. Creates or updates the target schema, functions, experiment, and trace
+   tables.
+4. Validates and deploys each selected DAB.
+5. Starts, registers, and smoke-tests only each selected unit.
+
+Local deployment selects every unit. CI instead supplies the push's base and
+head commits, so an agent-only change deploys only that agent.
 
 ## Useful commands
 
 ```bash
+scripts/deploy_agent.sh dev minimal-assistant <experiment-id>
+
+cd .generated/bundles/minimal-assistant
 databricks bundle validate -t dev --var experiment_id=<id>
 databricks bundle deploy -t dev --var experiment_id=<id>
-databricks bundle run register_uc_agent -t dev --var experiment_id=<id>
-databricks bundle run smoke_test -t dev --var experiment_id=<id>
+
+cd ../../../src/mcp_server
+databricks bundle validate -t dev
+databricks bundle deploy -t dev
 
 databricks apps logs dev-sandpit-langchain-agent -p sandpit
 databricks apps logs dev-sandpit-mcp-tools -p sandpit

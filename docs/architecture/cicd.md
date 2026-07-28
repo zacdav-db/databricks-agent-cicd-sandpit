@@ -4,19 +4,21 @@ GitHub Actions promotes the same repository state through development and
 production. Production can only be reached from the repository's `dev` branch.
 
 ```mermaid
-flowchart LR
+flowchart TB
     Feature["Feature branch"]
     DevPR["Pull request to dev"]
     DevGate["PR + quality gate"]
     Dev["dev branch"]
-    DevDeploy["Deploy and smoke dev"]
+    DevSelect{"Path selector"}
+    DevUnit["Deploy + smoke changed unit only"]
     ProdPR["Pull request: dev to main"]
     ProdGate["Source check + quality gate"]
     Main["main branch"]
-    ProdDeploy["Deploy and smoke prod"]
+    ProdSelect{"Path selector"}
+    ProdUnit["Deploy + smoke changed unit only"]
 
-    Feature --> DevPR --> DevGate --> Dev --> DevDeploy
-    Dev --> ProdPR --> ProdGate --> Main --> ProdDeploy
+    Feature --> DevPR --> DevGate --> Dev --> DevSelect --> DevUnit
+    Dev --> ProdPR --> ProdGate --> Main --> ProdSelect --> ProdUnit
 ```
 
 ## Pull-request quality gate
@@ -44,12 +46,17 @@ A merged pull request pushes to `dev`. GitHub Actions then:
 
 1. Repeats the quality gate.
 2. Builds a short-lived deployment wheelhouse.
-3. Bootstraps only `dev_agent_cicd`.
-4. Composes and validates the complete DAB desired state.
-5. Deploys and starts every dev App.
-6. Reconciles the dev Unity Catalog Agent Services.
-7. Runs end-to-end health, invocation, MCP, function, Omnigent, and trace
-   checks.
+3. Compares the previous and current commit and selects deployment units by
+   path.
+4. Bootstraps `dev_agent_cicd` only when an App deployment is selected.
+5. Validates, deploys, starts, registers, and smoke-tests only the selected
+   unit.
+
+An `agents/gemini-assistant/**` change deploys only the Gemini App. A change to
+the injected `agent_platform/**` intentionally deploys every folder-defined
+agent, one at a time. Changes under `src/langchain_agent/`, `src/mcp_server/`,
+or `src/omnigent_app/` select only that App. Documentation- and test-only
+changes deploy nothing.
 
 ## Production promotion
 
@@ -61,7 +68,19 @@ After merge, the `main` push is checked against its associated merged promotion
 PR. CI repeats the quality gate and deploys only the `prod` target. There is no
 manual-dispatch production path.
 
-## Target isolation
+## App and target isolation
+
+Each folder-defined agent has a complete generated DAB with a unique
+`bundle.name` and workspace root. Its state contains exactly one App. Selecting
+one agent therefore cannot plan, update, restart, or delete a sibling App.
+
+The LangChain, MCP, and Omnigent Apps also have one bundle each. MCP and
+Omnigent reference their dependencies by target-specific App name, so those
+references do not require shared state.
+
+Deployments run sequentially. This avoids overlapping App identity and OAuth
+updates in the shared sandpit workspace while preserving independent bundle
+state.
 
 Both targets currently use the same workspace, catalog, warehouse, model
 endpoint, and GitHub credential environment. They do not share:
@@ -74,6 +93,11 @@ endpoint, and GitHub credential environment. They do not share:
 
 Every target-specific resource has an explicit `dev` or `prod` prefix. The
 credential environments can be split later without changing the DAB contract.
+
+The first isolated deployment transfers any existing folder App from the
+former shared bundle state with DAB `deployment unbind` and `deployment bind`.
+The App UUID and running App are preserved; no delete or forced restart is
+used. Later deployments read and write only the agent's isolated state.
 
 ## Authentication and runners
 

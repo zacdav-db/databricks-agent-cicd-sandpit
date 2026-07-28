@@ -28,7 +28,9 @@ def main() -> None:
     )
     for agent in index["agents"]:
         name = agent["name"]
-        requirements = generated / "agents" / name / "requirements.txt"
+        requirements = (
+            generated / "bundles" / name / "app" / "requirements.txt"
+        )
         subprocess.run(
             [
                 args.uv,

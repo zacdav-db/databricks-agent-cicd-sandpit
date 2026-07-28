@@ -1,0 +1,79 @@
+bundle:
+  name: sandpit-omnigent
+  databricks_cli_version: ">= 1.7.0, < 2.0.0"
+
+variables:
+  catalog:
+    default: zacdav_sandpit_catalog
+  schema: {}
+  resource_prefix: {}
+  warehouse_id:
+    default: f7a871ffa2a9ab80
+  model_endpoint:
+    default: databricks-claude-sonnet-4-5
+  uc_function_name: {}
+  custom_mcp_app_name: {}
+
+targets:
+  dev:
+    default: true
+    mode: development
+    variables:
+      schema: dev_agent_cicd
+      resource_prefix: dev
+      uc_function_name: dev_estimate_project_cost
+      custom_mcp_app_name: dev-sandpit-mcp-tools
+    workspace:
+      host: https://fevm-zacdav-sandpit.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+  prod:
+    mode: production
+    variables:
+      schema: prod_agent_cicd
+      resource_prefix: prod
+      uc_function_name: prod_estimate_project_cost
+      custom_mcp_app_name: prod-sandpit-mcp-tools
+    workspace:
+      host: https://fevm-zacdav-sandpit.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+resources:
+  apps:
+    omnigent:
+      name: ${var.resource_prefix}-sandpit-omnigent
+      description: Omnigent server with a pre-registered YAML supervisor agent.
+      source_code_path: .
+      config:
+        command: [python, launch.py]
+        env:
+          - name: MODEL_ENDPOINT
+            value_from: llm
+          - name: DATABRICKS_WAREHOUSE_ID
+            value_from: warehouse
+          - name: UC_FUNCTION_FULL_NAME
+            value_from: project_cost_function
+          - name: CUSTOM_MCP_APP_NAME
+            value_from: custom_mcp_app
+          - name: OMNIGENT_HOST_OWNER
+            value: zachary.davies@databricks.com
+      resources:
+        - name: llm
+          serving_endpoint:
+            name: ${var.model_endpoint}
+            permission: CAN_QUERY
+        - name: warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: project_cost_function
+          uc_securable:
+            securable_full_name: ${var.catalog}.${var.schema}.${var.uc_function_name}
+            securable_type: FUNCTION
+            permission: EXECUTE
+        - name: custom_mcp_app
+          app:
+            name: ${var.custom_mcp_app_name}
+            permission: CAN_USE
+      permissions:
+        - level: CAN_USE
+          user_name: zachary.davies@databricks.com
