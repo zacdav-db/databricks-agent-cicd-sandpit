@@ -481,13 +481,16 @@ def test_bootstrap_creates_target_schema_before_functions(
     assert statements[0].strip().startswith(
         "CREATE SCHEMA IF NOT EXISTS `catalog_name`.`dev_agent_cicd`",
     )
+    assert statements[1].strip().startswith("CREATE FUNCTION IF NOT EXISTS")
     assert "`catalog_name`.`dev_agent_cicd`.`dev_estimate_project_cost`" in (
         statements[1]
     )
+    assert statements[2].strip().startswith("CREATE FUNCTION IF NOT EXISTS")
     assert (
         "CONVERT_TIMEZONE(CURRENT_TIMEZONE(), 'UTC', CURRENT_TIMESTAMP())"
         in statements[2]
     )
+    assert all("OR REPLACE" not in statement for statement in statements)
 
 
 def test_ci_promotes_dev_to_main_before_production() -> None:

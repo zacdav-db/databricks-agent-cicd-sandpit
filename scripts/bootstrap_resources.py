@@ -74,7 +74,7 @@ def create_uc_functions(
         (_identifier(catalog), _identifier(schema), _identifier(cost_function_name)),
     )
     cost_statement = f"""
-    CREATE OR REPLACE FUNCTION {cost_full_name}(
+    CREATE FUNCTION IF NOT EXISTS {cost_full_name}(
       hours DOUBLE,
       hourly_rate DOUBLE,
       contingency_percent DOUBLE
@@ -88,7 +88,7 @@ def create_uc_functions(
         (_identifier(catalog), _identifier(schema), _identifier(time_function_name)),
     )
     time_statement = f"""
-    CREATE OR REPLACE FUNCTION {time_full_name}()
+    CREATE FUNCTION IF NOT EXISTS {time_full_name}()
     RETURNS STRING
     LANGUAGE SQL
     COMMENT 'Return the current UTC timestamp in ISO-8601 format.'
