@@ -62,9 +62,16 @@ def test_runtime_app_change_selects_only_that_app() -> None:
     }
 
 
-def test_deployment_platform_change_selects_every_unit() -> None:
+@pytest.mark.parametrize(
+    "path",
+    [
+        "scripts/migrate_app_bundle.sh",
+        "scripts/smoke_test.py",
+    ],
+)
+def test_deployment_platform_change_selects_every_unit(path: str) -> None:
     assert select_deployments(
-        ["scripts/migrate_app_bundle.sh"],
+        [path],
         AGENTS,
     ) == {
         "apps": ["mcp", "langchain", "omnigent"],
