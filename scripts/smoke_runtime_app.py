@@ -17,8 +17,8 @@ from register_uc_agent import (
 )
 from smoke_test import (
     _api_json,
-    _mcp_scalar,
     _mcp_request,
+    _mcp_scalar,
     _smoke_omnigent_delegation,
     _wait_for_app,
     _wait_for_trace,
