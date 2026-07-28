@@ -114,6 +114,8 @@ jobs:
             requirements*.txt
             agent_platform/requirements.txt
             agents/**/requirements.txt
+            examples/**/requirements.txt
+            examples/**/platform-requirements.txt
             src/**/requirements.txt
       - name: Install test dependencies
         run: |
@@ -137,6 +139,27 @@ jobs:
           python-version: "3.11"
       - name: Compile generated Apps with Python 3.11
         run: python -m compileall -q .generated/bundles
+      - name: Validate the pinned tracing integrations
+        run: |
+          uv venv --python python .tracing-test-venv
+          uv pip install --python .tracing-test-venv/bin/python \
+            -r agent_platform/requirements.txt \
+            -r agents/claude-assistant/requirements.txt \
+            -r agents/gemini-assistant/requirements.txt \
+            -r agents/langchain-assistant/requirements.txt \
+            -r agents/openai-assistant/requirements.txt
+          PYTHONPATH="agent_platform" \
+            .tracing-test-venv/bin/python -c \
+              "from _platform_tracing import configure_autologging; assert configure_autologging() == ('langchain', 'openai', 'anthropic', 'google.genai')"
+      - name: Validate the external agent bootstrap
+        run: |
+          uv venv --python python .external-test-venv
+          uv pip install --python .external-test-venv/bin/python \
+            -r examples/external-agent/platform-requirements.txt \
+            -r examples/external-agent/requirements.txt
+          PYTHONPATH="agent_platform:examples/external-agent/platform_bootstrap:examples/external-agent" \
+            .external-test-venv/bin/python -c \
+              "import author_agent; from _platform_tracing import configure_autologging; assert configure_autologging() == ('openai',)"
 
   package-deployment:
     name: Package deployment dependencies

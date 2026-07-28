@@ -112,6 +112,33 @@ def test_langchain_uses_supported_multi_server_client_lifecycle(
     )
 
 
+def test_trace_smoke_requires_a_child_of_the_platform_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "smoke_test_child_span",
+        ROOT / "scripts" / "smoke_test.py",
+    )
+    statements: list[str] = []
+
+    def execute(_client: object, _warehouse: str, statement: str) -> dict[str, object]:
+        statements.append(statement)
+        return {"result": {"data_array": [["2", "1"]]}}
+
+    monkeypatch.setattr(module, "_execute", execute)
+    counts = module._wait_for_trace(
+        object(),
+        "warehouse",
+        "catalog.schema.spans",
+        "trace123",
+        root_span_name="generated_agent.openai-assistant",
+    )
+
+    assert counts == {"trace_rows": 2, "direct_child_rows": 1}
+    assert "parent_span_id" in statements[0]
+    assert "generated_agent.openai-assistant" in statements[0]
+
+
 def test_agent_service_inventory_names_and_connection() -> None:
     module = _load(
         "register_uc_agent",

@@ -126,6 +126,12 @@ The platform owns:
 - Dev/prod startup, mandatory Unity AI Gateway Agent Service registration,
   read-back verification, and acceptance testing.
 
+The tracing bootstrap runs before the author module is imported. It enables
+the installed LangChain, OpenAI, Anthropic, and Gemini MLflow integrations;
+their model calls become child spans of the platform's root invocation span.
+See [platform-owned tracing](platform-tracing.md) for the capture boundaries
+and the externally hosted example.
+
 ## Deployment isolation
 
 Every folder gets a self-contained generated directory:

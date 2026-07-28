@@ -9,6 +9,35 @@ from pathlib import Path
 from typing import Any
 
 
+def _resolve(
+    uv: str,
+    *,
+    label: str,
+    requirements: list[Path],
+) -> None:
+    subprocess.run(
+        [
+            uv,
+            "pip",
+            "compile",
+            "--python-version",
+            "3.11",
+            "--python-platform",
+            "x86_64-manylinux_2_28",
+            "--only-binary",
+            ":all:",
+            "--no-sources",
+            "--no-header",
+            "--no-annotate",
+            "--quiet",
+            *(str(path) for path in requirements),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    print(f"Resolved Linux/Python 3.11 dependencies for {label}.")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -31,27 +60,21 @@ def main() -> None:
         requirements = (
             generated / "bundles" / name / "app" / "requirements.txt"
         )
-        subprocess.run(
-            [
-                args.uv,
-                "pip",
-                "compile",
-                "--python-version",
-                "3.11",
-                "--python-platform",
-                "x86_64-manylinux_2_28",
-                "--only-binary",
-                ":all:",
-                "--no-sources",
-                "--no-header",
-                "--no-annotate",
-                "--quiet",
-                str(requirements),
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
+        _resolve(
+            args.uv,
+            label=name,
+            requirements=[requirements],
         )
-        print(f"Resolved Linux/Python 3.11 dependencies for {name}.")
+
+    external = args.root / "examples" / "external-agent"
+    _resolve(
+        args.uv,
+        label="external-agent",
+        requirements=[
+            external / "platform-requirements.txt",
+            external / "requirements.txt",
+        ],
+    )
 
 
 if __name__ == "__main__":

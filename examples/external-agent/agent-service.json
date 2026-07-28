@@ -1,0 +1,11 @@
+{
+  "agent_service_type": "AGENT_SERVICE_TYPE_EXTERNAL",
+  "comment": "Externally hosted OpenAI agent traced in Databricks.",
+  "config": {
+    "connection": {
+      "name": "connections/<catalog>.<schema>.<http-connection>"
+    },
+    "base_path": "/api/invocations",
+    "system_prompt": "You are a concise externally hosted assistant."
+  }
+}

@@ -53,7 +53,8 @@ def _repository(
 
 
 def test_compose_agents_is_deterministic_and_platform_owned(tmp_path: Path) -> None:
-    root, _ = _repository(tmp_path)
+    root, agent = _repository(tmp_path)
+    author_source = (agent / "agent.py").read_bytes()
     git_marker = root / ".git" / "keep"
     git_marker.parent.mkdir()
     git_marker.write_text("repository metadata", encoding="utf-8")
@@ -74,6 +75,7 @@ def test_compose_agents_is_deterministic_and_platform_owned(tmp_path: Path) -> N
     assert first_index == (root / ".generated/agent-index.json").read_bytes()
     assert git_marker.read_text(encoding="utf-8") == "repository metadata"
     assert (root / "agents/small-agent/agent.py").is_file()
+    assert (root / "agents/small-agent/agent.py").read_bytes() == author_source
     assert index["contract_version"] == 3
     assert index["agents"][0]["resource_key"] == "generated_agent_small_agent"
     assert index["agents"][0]["bundle_path"] == (
@@ -104,6 +106,7 @@ def test_compose_agents_is_deterministic_and_platform_owned(tmp_path: Path) -> N
     }
     generated = root / ".generated/bundles/small-agent/app"
     assert (generated / "_agent_runtime.py").is_file()
+    assert (generated / "_platform_tracing.py").is_file()
     assert not (generated / "agent_sdk").exists()
     assert not (generated / "agent.yaml").exists()
     assert "example-package==1.2.3" in (
@@ -160,6 +163,8 @@ def test_manifest_contract_is_strict(
         "example-package @ https://example.test/package.whl\n",
         "-r another-file.txt\n",
         "mlflow==3.14.0\n",
+        "mlflow-tracing==3.14.0\n",
+        "anyio==4.10.0\n",
     ],
 )
 def test_requirements_reject_unsafe_or_platform_owned_entries(
@@ -188,6 +193,20 @@ def test_symlinks_are_rejected(tmp_path: Path) -> None:
     root, agent = _repository(tmp_path)
     (agent / "linked.py").symlink_to(agent / "agent.py")
     with pytest.raises(compose_agents.ContractError, match="Symlinks"):
+        compose_agents.compose(root)
+
+
+@pytest.mark.parametrize(
+    "reserved_path",
+    ["_agent_runtime.py", "_platform_tracing.py"],
+)
+def test_platform_runtime_paths_are_reserved(
+    tmp_path: Path,
+    reserved_path: str,
+) -> None:
+    root, agent = _repository(tmp_path)
+    (agent / reserved_path).write_text("author override", encoding="utf-8")
+    with pytest.raises(compose_agents.ContractError, match="reserved"):
         compose_agents.compose(root)
 
 
