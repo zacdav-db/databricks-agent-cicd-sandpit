@@ -1,0 +1,64 @@
+name: sandpit_supervisor
+description: Policy-controlled supervisor delegating to a hosted LangChain agent.
+
+prompt: |
+  You are a concise Databricks delivery-planning supervisor.
+
+  Delegate delivery-planning questions to `databricks_agent`. That agent calls
+  the deployed LangChain App directly. LangChain owns the foundation-model call,
+  its MLflow trace, and all custom or managed MCP tool use.
+
+  Never claim a delegation or tool call occurred unless the corresponding tool
+  completed successfully.
+
+executor:
+  harness: openai-agents
+  model: ${MODEL_ENDPOINT}
+  auth:
+    type: databricks
+    profile: ${DATABRICKS_CONFIG_PROFILE}
+
+async: true
+ask_timeout: 86400
+
+tools:
+  databricks_agent:
+    type: agent
+    description: Delegate a focused question to the deployed LangChain agent.
+    prompt: |
+      You delegate to the deployed LangChain agent. For each request, call
+      `invoke_langchain_agent` exactly once with the user's complete question.
+      Return the hosted agent's answer and trace ID without embellishment.
+    executor:
+      harness: openai-agents
+      model: ${MODEL_ENDPOINT}
+      auth:
+        type: databricks
+        profile: ${DATABRICKS_CONFIG_PROFILE}
+    tools:
+      invoke_langchain_agent:
+        type: function
+        description: Invoke the deployed LangChain App directly.
+        callable: agent_tools.invoke_langchain_agent
+        parameters:
+          type: object
+          properties:
+            message:
+              type: string
+          required: [message]
+
+policies:
+  approve_subagent_spawn:
+    type: function
+    handler: omnigent.policies.builtins.risk_score.risk_score_policy
+    factory_params:
+      threshold: 0
+      guarded_tools: [sys_session_send, sys_session_create]
+      escalate_action: ASK
+      reason: Sub-agent dispatch requires human approval.
+
+  approve_each_cost_dollar:
+    type: function
+    handler: sandpit_supervisor.agent_policies.every_dollar_cost_gate
+    factory_params:
+      interval_usd: 1.0

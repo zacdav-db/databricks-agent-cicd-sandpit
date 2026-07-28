@@ -116,7 +116,7 @@ trace is queryable in the target's spans table.
 ## Omnigent behavior
 
 The supervisor definition is
-[`src/omnigent_app/sandpit_supervisor/config.yaml`](../../src/omnigent_app/sandpit_supervisor/config.yaml).
+[`src/omnigent_app/sandpit_supervisor/sandpit_supervisor.yaml`](../../src/omnigent_app/sandpit_supervisor/sandpit_supervisor.yaml).
 It demonstrates:
 
 - A subagent that invokes the LangChain App directly with Databricks App
