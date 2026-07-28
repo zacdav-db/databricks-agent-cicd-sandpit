@@ -189,8 +189,48 @@ def test_repository_example_composes() -> None:
         for definition in definitions
     ] == [
         {
+            "name": "claude-assistant",
+            "model": "claude",
+            "entrypoint": "agent:invoke",
+        },
+        {
+            "name": "gemini-assistant",
+            "model": "gemini",
+            "entrypoint": "agent:invoke",
+        },
+        {
             "name": "minimal-assistant",
             "model": "default",
             "entrypoint": "agent:invoke",
         },
+        {
+            "name": "openai-assistant",
+            "model": "openai",
+            "entrypoint": "agent:invoke",
+        },
     ]
+    assert {
+        definition.model_alias: definition.model_endpoint
+        for definition in definitions
+    } == {
+        "claude": "databricks-claude-haiku-4-5",
+        "default": "databricks-claude-sonnet-4-5",
+        "gemini": "databricks-gemini-3-1-flash-lite",
+        "openai": "databricks-gpt-5-mini",
+    }
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["claude-assistant", "gemini-assistant", "openai-assistant"],
+)
+def test_provider_examples_have_no_langchain_or_platform_sdk_dependency(
+    name: str,
+) -> None:
+    folder = ROOT / "agents" / name
+    author_surface = (
+        (folder / "agent.py").read_text(encoding="utf-8")
+        + (folder / "requirements.txt").read_text(encoding="utf-8")
+    ).casefold()
+    assert "langchain" not in author_surface
+    assert "agent_sdk" not in author_surface

@@ -1,0 +1,2 @@
+databricks-openai==0.17.0
+databricks-sdk==0.122.0

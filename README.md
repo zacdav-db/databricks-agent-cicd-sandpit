@@ -60,6 +60,14 @@ independent approval is advisory while this sandpit has only one collaborator.
 See the [agent author guide](agents/README.md) for the exact rules and the
 [minimal example](agents/minimal-assistant).
 
+The repository also includes provider-native examples with the same contract:
+
+| Example | Client | Managed model |
+| --- | --- | --- |
+| [Gemini](agents/gemini-assistant) | Google Gen AI SDK | `databricks-gemini-3-1-flash-lite` |
+| [Claude](agents/claude-assistant) | Anthropic SDK | `databricks-claude-haiku-4-5` |
+| [OpenAI](agents/openai-assistant) | Databricks OpenAI client | `databricks-gpt-5-mini` |
+
 ## Architecture
 
 The repository is easier to understand as three separate views.
@@ -140,7 +148,7 @@ flowchart LR
 
 ## What is deployed
 
-Each target currently has four App definitions:
+Each target currently has seven App definitions:
 
 | App | Role |
 | --- | --- |
@@ -148,6 +156,9 @@ Each target currently has four App definitions:
 | `*-sandpit-mcp-tools` | Custom Streamable HTTP MCP server. |
 | `*-sandpit-omnigent` | Policy-controlled Omnigent supervisor. |
 | `*-agent-minimal-assistant` | Example generated from an agent folder. |
+| `*-agent-gemini-assistant` | Folder agent using the native Google Gen AI SDK. |
+| `*-agent-claude-assistant` | Folder agent using the native Anthropic SDK. |
+| `*-agent-openai-assistant` | Folder agent using the OpenAI SDK surface. |
 
 Dev and prod use the same sandpit workspace but have different App names,
 schemas, functions, experiments, trace tables, Agent Services, and bundle
