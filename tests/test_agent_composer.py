@@ -36,7 +36,6 @@ def _repository(
     requirements: str | None = "example-package==1.2.3\n",
 ) -> tuple[Path, Path]:
     shutil.copytree(ROOT / "agent_platform", tmp_path / "agent_platform")
-    shutil.copytree(ROOT / "agent_sdk", tmp_path / "agent_sdk")
     agent = tmp_path / "agents" / "small-agent"
     agent.mkdir(parents=True)
     (agent / "agent.yaml").write_text(
@@ -45,8 +44,7 @@ def _repository(
         encoding="utf-8",
     )
     (agent / "agent.py").write_text(
-        source
-        or "def invoke(message, context):\n    return f'{context.name}: {message}'\n",
+        source or "def invoke(message):\n    return f'Received: {message}'\n",
         encoding="utf-8",
     )
     if requirements is not None:
@@ -61,22 +59,36 @@ def test_compose_agents_is_deterministic_and_platform_owned(tmp_path: Path) -> N
     git_marker.write_text("repository metadata", encoding="utf-8")
 
     index = compose_agents.compose(root)
-    first_bundle = (root / ".generated/bundle/generated_agents.yml").read_bytes()
+    bundle_path = root / ".generated/bundles/small-agent/databricks.yml"
+    first_bundle = bundle_path.read_bytes()
+    first_app = (
+        root / ".generated/bundles/small-agent/app/_agent_runtime.py"
+    ).read_bytes()
     first_index = (root / ".generated/agent-index.json").read_bytes()
     compose_agents.compose(root)
 
-    assert first_bundle == (
-        root / ".generated/bundle/generated_agents.yml"
+    assert first_bundle == bundle_path.read_bytes()
+    assert first_app == (
+        root / ".generated/bundles/small-agent/app/_agent_runtime.py"
     ).read_bytes()
     assert first_index == (root / ".generated/agent-index.json").read_bytes()
     assert git_marker.read_text(encoding="utf-8") == "repository metadata"
     assert (root / "agents/small-agent/agent.py").is_file()
+    assert index["contract_version"] == 3
     assert index["agents"][0]["resource_key"] == "generated_agent_small_agent"
+    assert index["agents"][0]["bundle_path"] == (
+        ".generated/bundles/small-agent"
+    )
 
     bundle = yaml.safe_load(first_bundle)
+    assert bundle["bundle"]["name"] == "sandpit-folder-agent-small-agent"
+    assert bundle["targets"]["dev"]["workspace"]["root_path"] == (
+        "/Workspace/Users/${workspace.current_user.userName}"
+        "/.bundle/${bundle.name}/${bundle.target}"
+    )
     app = bundle["resources"]["apps"]["generated_agent_small_agent"]
     assert app["name"] == "${var.resource_prefix}-agent-small-agent"
-    assert app["source_code_path"] == "../agents/small-agent"
+    assert app["source_code_path"] == "./app"
     assert app["config"]["command"][1] == "_agent_runtime:app"
     assert app["resources"][0]["serving_endpoint"]["name"] == (
         "databricks-claude-sonnet-4-5"
@@ -85,15 +97,14 @@ def test_compose_agents_is_deterministic_and_platform_owned(tmp_path: Path) -> N
     assert env_names == {
         "AGENT_ENTRYPOINT",
         "AGENT_NAME",
-        "DEPLOYMENT_ENV",
         "MLFLOW_EXPERIMENT_ID",
         "MLFLOW_TRACING_SQL_WAREHOUSE_ID",
         "MLFLOW_TRACKING_URI",
         "MODEL_ENDPOINT",
     }
-    generated = root / ".generated/agents/small-agent"
+    generated = root / ".generated/bundles/small-agent/app"
     assert (generated / "_agent_runtime.py").is_file()
-    assert (generated / "agent_sdk/contract.py").is_file()
+    assert not (generated / "agent_sdk").exists()
     assert not (generated / "agent.yaml").exists()
     assert "example-package==1.2.3" in (
         generated / "requirements.txt"
@@ -166,10 +177,10 @@ def test_entrypoint_signature_is_validated_without_importing_code(
     root, _ = _repository(
         tmp_path,
         source="raise RuntimeError('must not import')\n"
-        "def invoke(message, context, secret=None):\n"
+        "def invoke(message, secret=None):\n"
         "    return message\n",
     )
-    with pytest.raises(compose_agents.ContractError, match="no extra arguments"):
+    with pytest.raises(compose_agents.ContractError, match="exactly one argument"):
         compose_agents.compose(root)
 
 
@@ -191,8 +202,72 @@ def test_repository_example_composes() -> None:
         for definition in definitions
     ] == [
         {
+            "name": "claude-assistant",
+            "model": "claude",
+            "entrypoint": "agent:invoke",
+        },
+        {
+            "name": "gemini-assistant",
+            "model": "gemini",
+            "entrypoint": "agent:invoke",
+        },
+        {
             "name": "minimal-assistant",
             "model": "default",
             "entrypoint": "agent:invoke",
         },
+        {
+            "name": "openai-assistant",
+            "model": "openai",
+            "entrypoint": "agent:invoke",
+        },
     ]
+    assert {
+        definition.model_alias: definition.model_endpoint
+        for definition in definitions
+    } == {
+        "claude": "databricks-claude-haiku-4-5",
+        "default": "databricks-claude-sonnet-4-5",
+        "gemini": "databricks-gemini-3-1-flash-lite",
+        "openai": "databricks-gpt-5-mini",
+    }
+
+
+def test_every_app_has_one_unique_bundle_state() -> None:
+    compose_agents.compose(ROOT)
+    bundle_paths = [
+        ROOT / "src/langchain_agent/databricks.yml",
+        ROOT / "src/mcp_server/databricks.yml",
+        ROOT / "src/omnigent_app/databricks.yml",
+        *sorted((ROOT / ".generated/bundles").glob("*/databricks.yml")),
+    ]
+    bundles = [
+        yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in bundle_paths
+    ]
+    bundle_names = [bundle["bundle"]["name"] for bundle in bundles]
+    assert len(bundle_names) == 7
+    assert len(set(bundle_names)) == len(bundle_names)
+    assert all(len(bundle["resources"]["apps"]) == 1 for bundle in bundles)
+    assert all(
+        bundle["targets"]["dev"]["workspace"]["root_path"].endswith(
+            "/.bundle/${bundle.name}/${bundle.target}",
+        )
+        for bundle in bundles
+    )
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["claude-assistant", "gemini-assistant", "openai-assistant"],
+)
+def test_provider_examples_have_no_langchain_or_platform_sdk_dependency(
+    name: str,
+) -> None:
+    folder = ROOT / "agents" / name
+    author_surface = (
+        (folder / "agent.py").read_text(encoding="utf-8")
+        + (folder / "requirements.txt").read_text(encoding="utf-8")
+    ).casefold()
+    assert "langchain" not in author_surface
+    assert "agent_sdk" not in author_surface
