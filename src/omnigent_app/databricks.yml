@@ -40,8 +40,6 @@ resources:
             value_from: llm
           - name: LANGCHAIN_AGENT_APP_NAME
             value_from: langchain_agent_app
-          - name: OMNIGENT_HOST_OWNER
-            value: zachary.davies@databricks.com
       resources:
         - name: llm
           serving_endpoint:

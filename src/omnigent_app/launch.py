@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import configparser
-import json
 import os
 import pathlib
 import shutil
@@ -14,6 +13,8 @@ import time
 import urllib.request
 
 from databricks.sdk import WorkspaceClient
+
+LOCAL_AUTH_HEADER = "X-Omnigent-Local-Identity"
 
 
 def _require_env(name: str) -> str:
@@ -50,6 +51,12 @@ def _app_url(client: WorkspaceClient, env_name: str) -> str:
     if not app.url:
         raise RuntimeError(f"Databricks App {app_name} does not have a URL.")
     return app.url.rstrip("/")
+
+
+def _configure_single_user_identity() -> None:
+    """Use one Omnigent identity behind the Databricks App auth boundary."""
+    os.environ["OMNIGENT_LOCAL_SINGLE_USER"] = "1"
+    os.environ["OMNIGENT_AUTH_HEADER"] = LOCAL_AUTH_HEADER
 
 
 def _render_agent_bundle() -> pathlib.Path:
@@ -141,12 +148,10 @@ def main() -> None:
             if existing_pythonpath
             else source_root
         )
-        # Databricks Apps provides the external authentication boundary. Allow
-        # the colocated host to register without a second login flow.
-        os.environ["OMNIGENT_LOCAL_SINGLE_USER"] = "1"
-        os.environ["OMNIGENT_DATABRICKS_EXTRA_HEADERS"] = json.dumps(
-            {"X-Forwarded-Email": _require_env("OMNIGENT_HOST_OWNER")},
-        )
+        # Databricks Apps provides the external authentication boundary. Keep
+        # this example as one Omnigent user so callers using user or
+        # service-principal OAuth can see the same colocated host.
+        _configure_single_user_identity()
         os.environ["DATABRICKS_CONFIG_FILE"] = str(profile_path)
         os.environ["DATABRICKS_CONFIG_PROFILE"] = "app"
         os.environ["LANGCHAIN_AGENT_URL"] = _app_url(
