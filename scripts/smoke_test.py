@@ -672,7 +672,7 @@ def main() -> None:
 
     agent_service_name = (
         f"{args.uc_function.rsplit('.', maxsplit=1)[0]}."
-        f"{prefix}_sandpit_langchain_agent"
+        f"{args.target}_sandpit_langchain_agent"
     )
     agent_service = _api_json(
         client,
