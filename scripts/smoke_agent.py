@@ -8,6 +8,11 @@ import os
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
+from register_uc_agent import (
+    DEFAULT_METADATA_PRINCIPAL,
+    gateway_agent,
+    verify_gateway_registration,
+)
 from smoke_test import _api_json, _wait_for_app, _wait_for_trace
 
 
@@ -21,6 +26,10 @@ def parse_args() -> argparse.Namespace:
         default=os.getenv("DATABRICKS_WAREHOUSE_ID", "f7a871ffa2a9ab80"),
     )
     parser.add_argument("--trace-table")
+    parser.add_argument(
+        "--metadata-principal",
+        default=DEFAULT_METADATA_PRINCIPAL,
+    )
     return parser.parse_args()
 
 
@@ -40,6 +49,13 @@ def main() -> None:
     )
     app_name = f"{args.target}-agent-{args.agent}"
     app_url = _wait_for_app(client, app_name)
+    gateway = verify_gateway_registration(
+        client,
+        catalog=catalog,
+        schema=schema,
+        registration=gateway_agent(args.target, agent=args.agent),
+        principal=args.metadata_principal,
+    )
     _api_json(client, "GET", f"{app_url}/api/health")
     result = _api_json(
         client,
@@ -59,6 +75,8 @@ def main() -> None:
         json.dumps(
             {
                 "app": app_name,
+                "gateway_agent_service": gateway["agent_service"],
+                "gateway_registration_verified": True,
                 "output": result["output"],
                 "trace_id": result["trace_id"],
                 "trace_table": trace_table,

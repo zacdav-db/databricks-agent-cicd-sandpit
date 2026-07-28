@@ -10,6 +10,11 @@ from typing import Any
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
+from register_uc_agent import (
+    DEFAULT_METADATA_PRINCIPAL,
+    gateway_agent,
+    verify_gateway_registration,
+)
 from smoke_test import (
     _api_json,
     _find_nonempty_string,
@@ -24,8 +29,18 @@ def _smoke_langchain(
     client: WorkspaceClient,
     target: str,
     warehouse_id: str,
+    metadata_principal: str,
 ) -> dict[str, Any]:
     url = _wait_for_app(client, f"{target}-sandpit-langchain-agent")
+    catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
+    schema = os.getenv("UC_SCHEMA", f"{target}_agent_cicd")
+    gateway = verify_gateway_registration(
+        client,
+        catalog=catalog,
+        schema=schema,
+        registration=gateway_agent(target, runtime_agent="langchain"),
+        principal=metadata_principal,
+    )
     _api_json(client, "GET", f"{url}/api/health")
     result = _api_json(
         client,
@@ -38,8 +53,6 @@ def _smoke_langchain(
         "",
     ):
         raise RuntimeError(f"LangChain App returned an invalid result: {result}")
-    catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
-    schema = os.getenv("UC_SCHEMA", f"{target}_agent_cicd")
     trace_prefix = os.getenv(
         "UC_TRACE_TABLE_PREFIX",
         f"{target}_sandpit_agent_cicd",
@@ -51,7 +64,12 @@ def _smoke_langchain(
         trace_table,
         result["trace_id"],
     )
-    return {"result": result, "trace_table": trace_table}
+    return {
+        "gateway_agent_service": gateway["agent_service"],
+        "gateway_registration_verified": True,
+        "result": result,
+        "trace_table": trace_table,
+    }
 
 
 def _smoke_mcp(client: WorkspaceClient, target: str) -> dict[str, Any]:
@@ -105,8 +123,21 @@ def _smoke_mcp(client: WorkspaceClient, target: str) -> dict[str, Any]:
     return {"tool_count": len(tool_names), "bridge_trace_id": trace_id}
 
 
-def _smoke_omnigent(client: WorkspaceClient, target: str) -> dict[str, Any]:
+def _smoke_omnigent(
+    client: WorkspaceClient,
+    target: str,
+    metadata_principal: str,
+) -> dict[str, Any]:
     url = _wait_for_app(client, f"{target}-sandpit-omnigent")
+    catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
+    schema = os.getenv("UC_SCHEMA", f"{target}_agent_cicd")
+    gateway = verify_gateway_registration(
+        client,
+        catalog=catalog,
+        schema=schema,
+        registration=gateway_agent(target, runtime_agent="omnigent"),
+        principal=metadata_principal,
+    )
     _api_json(client, "GET", f"{url}/health")
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
@@ -126,7 +157,12 @@ def _smoke_omnigent(client: WorkspaceClient, target: str) -> dict[str, Any]:
                 raise RuntimeError(
                     f"Missing Omnigent MCP servers: {required - servers}",
                 )
-            return {"agent": agent["name"], "mcp_servers": sorted(servers)}
+            return {
+                "agent": agent["name"],
+                "gateway_agent_service": gateway["agent_service"],
+                "gateway_registration_verified": True,
+                "mcp_servers": sorted(servers),
+            }
         time.sleep(10)
     raise TimeoutError("Omnigent supervisor did not become ready.")
 
@@ -144,6 +180,10 @@ def parse_args() -> argparse.Namespace:
         "--warehouse-id",
         default=os.getenv("DATABRICKS_WAREHOUSE_ID", "f7a871ffa2a9ab80"),
     )
+    parser.add_argument(
+        "--metadata-principal",
+        default=DEFAULT_METADATA_PRINCIPAL,
+    )
     return parser.parse_args()
 
 
@@ -153,11 +193,20 @@ def main() -> None:
         config=Config(profile=args.profile, http_timeout_seconds=180),
     )
     if args.app == "langchain":
-        result = _smoke_langchain(client, args.target, args.warehouse_id)
+        result = _smoke_langchain(
+            client,
+            args.target,
+            args.warehouse_id,
+            args.metadata_principal,
+        )
     elif args.app == "mcp":
         result = _smoke_mcp(client, args.target)
     else:
-        result = _smoke_omnigent(client, args.target)
+        result = _smoke_omnigent(
+            client,
+            args.target,
+            args.metadata_principal,
+        )
     print(json.dumps({"app": args.app, **result}, sort_keys=True))
 
 

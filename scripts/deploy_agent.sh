@@ -50,7 +50,7 @@ printf 'Deploying only %s to %s\n' "${agent_name}" "${target}"
   databricks bundle run "${resource_key}" "${bundle_args[@]}"
 )
 
-printf 'Registering only %s in Unity Catalog\n' "${agent_name}"
+printf 'Registering only %s in Unity AI Gateway\n' "${agent_name}"
 "${python_bin}" scripts/register_uc_agent.py \
   --target "${target}" \
   --catalog "${UC_CATALOG}" \

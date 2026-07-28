@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import shutil
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +19,7 @@ def _load(name: str, path: Path):
     if spec is None or spec.loader is None:
         raise RuntimeError(path)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -125,6 +127,14 @@ def test_agent_service_inventory_names_and_connection() -> None:
         "dev_agent_langchain_assistant",
         "dev_agent_langchain_assistant_connection",
     )
+    assert module._omnigent_inventory_names("prod") == (
+        "prod-sandpit-omnigent",
+        "prod_sandpit_omnigent",
+        "prod_sandpit_omnigent_connection",
+    )
+    omnigent = module.gateway_agent("dev", runtime_agent="omnigent")
+    assert omnigent.app_name == "dev-sandpit-omnigent"
+    assert omnigent.base_path == "/v1"
     options = module._connection_options(
         "https://agent.example/",
         "https://workspace.example/",
@@ -160,11 +170,37 @@ def test_uc_registration_extends_the_sdk_client(
     class FakeApiClient:
         def __init__(self) -> None:
             self.calls: list[tuple[str, str, dict[str, object]]] = []
+            self.service_exists = False
 
         def do(self, method: str, path: str, **kwargs: object) -> dict[str, object]:
             self.calls.append((method, path, kwargs))
-            if method == "GET":
+            if method == "GET" and "permissions/AGENT_SERVICE" in path:
+                return {
+                    "privilege_assignments": [
+                        {
+                            "principal": "owner@example.com",
+                            "privileges": ["EXECUTE", "READ_METADATA"],
+                        },
+                    ],
+                }
+            if method == "GET" and not self.service_exists:
                 raise FakeNotFound
+            if method == "GET":
+                return {
+                    "name": "agent-services/catalog_name.schema_name.agent_service",
+                    "agent_service_type": "AGENT_SERVICE_TYPE_EXTERNAL",
+                    "config": {
+                        "connection": {
+                            "name": (
+                                "connections/"
+                                "catalog_name.schema_name.agent_connection"
+                            ),
+                        },
+                        "base_path": "/api/invocations",
+                    },
+                }
+            if method == "POST":
+                self.service_exists = True
             return {}
 
     class FakeWorkspaceClient:
@@ -197,11 +233,29 @@ def test_uc_registration_extends_the_sdk_client(
         service_name="agent_service",
         connection_full_name=connection,
         target="dev",
+        base_path="/api/invocations",
+        system_prompt="Be concise.",
     )
     module._grant_metadata(client, service, "owner@example.com")
+    registration = module.GatewayAgent(
+        app_name="dev-agent",
+        service_name="agent_service",
+        connection_name="agent_connection",
+        base_path="/api/invocations",
+        system_prompt="Be concise.",
+    )
+    verified = module.verify_gateway_registration(
+        client,
+        catalog="catalog_name",
+        schema="schema_name",
+        registration=registration,
+        principal="owner@example.com",
+    )
 
     assert connection == "catalog_name.schema_name.agent_connection"
     assert service == "catalog_name.schema_name.agent_service"
+    assert verified["gateway_registered"] is True
+    assert verified["privileges"] == ["EXECUTE", "READ_METADATA"]
     assert client.connections.created["parent"] == (
         "schemas/catalog_name.schema_name"
     )
@@ -209,7 +263,11 @@ def test_uc_registration_extends_the_sdk_client(
     assert client.api_client.calls[1][2]["query"]["agent_service_id"] == (
         "agent_service"
     )
-    grant = client.api_client.calls[2]
+    grant = next(
+        call
+        for call in client.api_client.calls
+        if call[0] == "PATCH" and "permissions/AGENT_SERVICE" in call[1]
+    )
     assert grant[:2] == (
         "PATCH",
         (
@@ -221,6 +279,53 @@ def test_uc_registration_extends_the_sdk_client(
         "principal": "owner@example.com",
         "add": ["EXECUTE", "READ_METADATA"],
     }
+
+
+def test_gateway_registration_fails_without_required_grants() -> None:
+    module = _load(
+        "register_uc_agent_missing_grants",
+        ROOT / "scripts" / "register_uc_agent.py",
+    )
+    with pytest.raises(RuntimeError, match="READ_METADATA"):
+        module._validate_gateway_registration(
+            service={
+                "name": "agent-services/catalog_name.schema_name.agent_service",
+                "agent_service_type": "AGENT_SERVICE_TYPE_EXTERNAL",
+                "config": {
+                    "connection": {
+                        "name": (
+                            "connections/catalog_name.schema_name.agent_connection"
+                        ),
+                    },
+                    "base_path": "/api/invocations",
+                },
+            },
+            grants={
+                "privilege_assignments": [
+                    {
+                        "principal": "owner@example.com",
+                        "privileges": ["EXECUTE"],
+                    },
+                ],
+            },
+            service_full_name="catalog_name.schema_name.agent_service",
+            connection_full_name="catalog_name.schema_name.agent_connection",
+            base_path="/api/invocations",
+            principal="owner@example.com",
+        )
+
+
+def test_deployment_registers_every_agent_app_in_gateway() -> None:
+    deploy_agent = (ROOT / "scripts" / "deploy_agent.sh").read_text(encoding="utf-8")
+    deploy_runtime = (ROOT / "scripts" / "deploy_runtime_app.sh").read_text(
+        encoding="utf-8",
+    )
+
+    assert "scripts/register_uc_agent.py" in deploy_agent
+    assert 'component}" == "langchain" || "${component}" == "omnigent"' in (
+        deploy_runtime
+    )
+    assert '--runtime-agent "${component}"' in deploy_runtime
 
 
 def test_bundle_targets_match_bootstrap_namespaces() -> None:

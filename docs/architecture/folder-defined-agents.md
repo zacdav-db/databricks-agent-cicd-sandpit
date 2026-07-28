@@ -13,14 +13,16 @@ flowchart LR
     Composer["Validate and compose"]
     Generated["Generated App source<br/>and dedicated DAB state"]
     Dev["dev App"]
+    DevGateway["dev Gateway Agent Service"]
     Prod["prod App"]
+    ProdGateway["prod Gateway Agent Service"]
 
     Folder --> Composer
     Policy --> Composer
     Runtime --> Composer
     Composer --> Generated
-    Generated --> Dev
-    Generated --> Prod
+    Generated --> Dev --> DevGateway
+    Generated --> Prod --> ProdGateway
 ```
 
 The generated output is rebuilt before DAB validation and deployment. It is
@@ -121,7 +123,8 @@ The platform owns:
 - MLflow tracing and returned trace IDs.
 - Target-specific experiment, warehouse, and Unity Catalog trace bindings.
 - App commands, names, identities, permissions, model grants, and DAB shape.
-- Dev/prod startup, Agent Service registration, and acceptance testing.
+- Dev/prod startup, mandatory Unity AI Gateway Agent Service registration,
+  read-back verification, and acceptance testing.
 
 ## Deployment isolation
 
@@ -159,8 +162,9 @@ The contract is intentionally strict. CI rejects:
   or DAB fragments.
 
 Dependency resolution is tested for Linux/Python 3.11 with binary wheels only.
-The generated App is then invoked after deployment, and CI waits until its
-trace is queryable in the target's Unity Catalog spans table.
+After deployment, CI verifies the App's Gateway Agent Service and grants,
+invokes the App, and waits until its trace is queryable in the target's Unity
+Catalog spans table.
 
 ## Design boundaries
 
