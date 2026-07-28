@@ -8,7 +8,11 @@ import os
 import time
 from typing import Any
 
-from app_names import langchain_agent_app_name
+from app_names import (
+    langchain_agent_app_name,
+    mcp_app_name,
+    omnigent_app_name,
+)
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
 from register_uc_agent import (
@@ -29,7 +33,7 @@ from smoke_test import (
 
 
 def _custom_mcp_identity(client: WorkspaceClient, target: str) -> str:
-    url = _wait_for_app(client, f"mcp-{target}-sandpit-tools")
+    url = _wait_for_app(client, mcp_app_name(target))
     endpoint = f"{url}/mcp"
     _mcp_request(
         client,
@@ -141,7 +145,7 @@ def _smoke_langchain(
 
 
 def _smoke_mcp(client: WorkspaceClient, target: str) -> dict[str, Any]:
-    url = _wait_for_app(client, f"mcp-{target}-sandpit-tools")
+    url = _wait_for_app(client, mcp_app_name(target))
     endpoint = f"{url}/mcp"
     _mcp_request(
         client,
@@ -190,7 +194,7 @@ def _smoke_omnigent(
     warehouse_id: str,
     metadata_principal: str,
 ) -> dict[str, Any]:
-    url = _wait_for_app(client, f"{target}-sandpit-omnigent")
+    url = _wait_for_app(client, omnigent_app_name(target))
     catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
     schema = os.getenv("UC_SCHEMA", f"{target}_agent_cicd")
     gateway = verify_gateway_registration(

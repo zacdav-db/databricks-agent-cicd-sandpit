@@ -38,6 +38,14 @@ def mcp_app_template() -> str:
     return f"mcp-{RESOURCE_PREFIX_TEMPLATE}-sandpit-tools"
 
 
+def omnigent_app_name(target: str) -> str:
+    return f"{_target(target)}-sandpit-omnigent"
+
+
+def omnigent_app_template() -> str:
+    return f"{RESOURCE_PREFIX_TEMPLATE}-sandpit-omnigent"
+
+
 def legacy_generated_agent_app_name(target: str, agent_name: str) -> str:
     return f"{_target(target)}-agent-{agent_name}"
 
@@ -61,6 +69,7 @@ def main() -> None:
             "legacy-langchain",
             "legacy-mcp",
             "mcp",
+            "omnigent",
         ),
     )
     parser.add_argument("target", choices=sorted(TARGETS))
@@ -79,6 +88,8 @@ def main() -> None:
         value = legacy_langchain_agent_app_name(args.target)
     elif args.kind == "legacy-mcp":
         value = legacy_mcp_app_name(args.target)
+    elif args.kind == "omnigent":
+        value = omnigent_app_name(args.target)
     else:
         value = mcp_app_name(args.target)
     print(value)

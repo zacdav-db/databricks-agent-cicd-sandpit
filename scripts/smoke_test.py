@@ -11,6 +11,11 @@ import time
 from datetime import datetime
 from typing import Any
 
+from app_names import (
+    langchain_agent_app_name,
+    mcp_app_name,
+    omnigent_app_name,
+)
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
 
@@ -503,10 +508,9 @@ def main() -> None:
             http_timeout_seconds=180,
         ),
     )
-    prefix = args.target
-    mcp_url = _wait_for_app(client, f"mcp-{prefix}-sandpit-tools")
-    agent_url = _wait_for_app(client, f"agent-{prefix}-sandpit-langchain")
-    omnigent_url = _wait_for_app(client, f"{prefix}-sandpit-omnigent")
+    mcp_url = _wait_for_app(client, mcp_app_name(args.target))
+    agent_url = _wait_for_app(client, langchain_agent_app_name(args.target))
+    omnigent_url = _wait_for_app(client, omnigent_app_name(args.target))
     _progress("All three runtime-example Databricks Apps report RUNNING.")
 
     _api_json(client, "GET", f"{agent_url}/api/health")

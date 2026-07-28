@@ -639,7 +639,7 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
         "permission": "CAN_USE",
     }
     assert omnigent_bundle["resources"]["apps"]["omnigent"]["name"] == (
-        "${var.resource_prefix}-sandpit-omnigent"
+        app_names.omnigent_app_template()
     )
 
 

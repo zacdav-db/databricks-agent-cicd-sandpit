@@ -12,6 +12,7 @@ from urllib.parse import quote, urlsplit
 from app_names import (
     generated_agent_app_name,
     langchain_agent_app_name,
+    omnigent_app_name,
 )
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.errors import NotFound
@@ -44,7 +45,7 @@ def _omnigent_inventory_names(target: str) -> tuple[str, str, str]:
     if target not in {"dev", "prod"}:
         raise ValueError("Target must be dev or prod.")
     stem = f"{target}_sandpit_omnigent"
-    return f"{target}-sandpit-omnigent", stem, f"{stem}_connection"
+    return omnigent_app_name(target), stem, f"{stem}_connection"
 
 
 def _generated_inventory_names(target: str, name: str) -> tuple[str, str, str]:
