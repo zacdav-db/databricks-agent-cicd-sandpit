@@ -10,7 +10,6 @@ case "${component}" in
   langchain)
     bundle_dir="src/langchain_agent"
     resource_key="langchain_agent"
-    app_name="${target}-sandpit-langchain-agent"
     bundle_args=(
       -t "${target}"
       --var "experiment_id=${experiment_id}"
@@ -24,13 +23,11 @@ case "${component}" in
   mcp)
     bundle_dir="src/mcp_server"
     resource_key="mcp_server"
-    app_name="${target}-sandpit-mcp-tools"
     bundle_args=(-t "${target}")
     ;;
   omnigent)
     bundle_dir="src/omnigent_app"
     resource_key="omnigent"
-    app_name="${target}-sandpit-omnigent"
     bundle_args=(
       -t "${target}"
       --var "catalog=${UC_CATALOG}"
@@ -43,6 +40,16 @@ case "${component}" in
     exit 1
     ;;
 esac
+
+app_name="$(
+  cd "${bundle_dir}"
+  databricks bundle summary "${bundle_args[@]}" -o json |
+    jq -er --arg key "${resource_key}" '.resources.apps[$key].name'
+)"
+if [[ "${component}" == "mcp" && "${app_name}" != mcp-* ]]; then
+  echo "Custom MCP App name must start with mcp-: ${app_name}" >&2
+  exit 1
+fi
 
 scripts/migrate_app_bundle.sh \
   "${target}" \

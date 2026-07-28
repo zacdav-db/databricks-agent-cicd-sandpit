@@ -22,7 +22,7 @@ targets:
       schema: dev_agent_cicd
       resource_prefix: dev
       uc_function_name: dev_estimate_project_cost
-      custom_mcp_app_name: dev-sandpit-mcp-tools
+      custom_mcp_app_name: mcp-dev-sandpit-tools
     workspace:
       host: https://fevm-zacdav-sandpit.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
@@ -32,7 +32,7 @@ targets:
       schema: prod_agent_cicd
       resource_prefix: prod
       uc_function_name: prod_estimate_project_cost
-      custom_mcp_app_name: prod-sandpit-mcp-tools
+      custom_mcp_app_name: mcp-prod-sandpit-tools
     workspace:
       host: https://fevm-zacdav-sandpit.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

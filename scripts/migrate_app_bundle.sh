@@ -35,6 +35,18 @@ if [[ -n "${legacy_id}" ]]; then
   )
 fi
 
+if [[ -n "${isolated_id}" && "${isolated_id}" != "${app_name}" ]]; then
+  printf 'Detaching replaced App %s from isolated bundle state\n' "${isolated_id}"
+  (
+    cd "${bundle_dir}"
+    databricks bundle deployment unbind \
+      "${resource_key}" \
+      "${bundle_args[@]}" \
+      --force-lock
+  )
+  isolated_id=""
+fi
+
 existing_app_name="$(
   databricks apps get "${app_name}" -o json 2>/dev/null |
     jq -r '.name // empty' || true

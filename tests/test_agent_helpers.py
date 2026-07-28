@@ -361,9 +361,18 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
             encoding="utf-8",
         ),
     )
-    assert mcp_bundle["resources"]["apps"]["mcp_server"]["name"] == (
-        "${var.resource_prefix}-sandpit-mcp-tools"
-    )
+    mcp_app_name = mcp_bundle["resources"]["apps"]["mcp_server"]["name"]
+    assert mcp_app_name == "mcp-${var.resource_prefix}-sandpit-tools"
+    for target in ("dev", "prod"):
+        resolved_mcp_name = mcp_app_name.replace(
+            "${var.resource_prefix}",
+            target,
+        )
+        assert resolved_mcp_name.startswith("mcp-")
+        assert (
+            omnigent_bundle["targets"][target]["variables"]["custom_mcp_app_name"]
+            == resolved_mcp_name
+        )
     assert omnigent_bundle["resources"]["apps"]["omnigent"]["name"] == (
         "${var.resource_prefix}-sandpit-omnigent"
     )

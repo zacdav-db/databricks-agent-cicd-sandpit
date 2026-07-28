@@ -28,7 +28,7 @@ targets:
 resources:
   apps:
     mcp_server:
-      name: ${var.resource_prefix}-sandpit-mcp-tools
+      name: mcp-${var.resource_prefix}-sandpit-tools
       description: Custom Streamable HTTP MCP server deployed by a Databricks Asset Bundle.
       source_code_path: .
       config:

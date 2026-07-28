@@ -7,6 +7,19 @@ head_sha="${3:?Usage: deploy_target.sh <dev|prod> <base-sha> <head-sha>}"
 python_bin="${PYTHON_BIN:-python}"
 export PYTHON_BIN="${python_bin}"
 
+databricks_app_exists() {
+  local app_name="$1"
+  local output
+  if output="$(databricks apps get "${app_name}" -o json 2>&1)"; then
+    return 0
+  fi
+  if [[ "${output}" == *"does not exist or is deleted."* ]]; then
+    return 1
+  fi
+  printf '%s\n' "${output}" >&2
+  return 2
+}
+
 if [[ "${target}" != "dev" && "${target}" != "prod" ]]; then
   echo "Target must be dev or prod." >&2
   exit 1
@@ -61,3 +74,22 @@ while IFS= read -r agent_name; do
     "${agent_name}" \
     "${experiment_id}"
 done < <(jq -r '.agents[]' <<<"${selection}")
+
+if jq -e '.apps | index("mcp") != null' <<<"${selection}" >/dev/null; then
+  replacement_app="mcp-${target}-sandpit-tools"
+  legacy_app="${target}-sandpit-mcp-tools"
+  if databricks_app_exists "${legacy_app}"; then
+    if ! jq -e '.apps | index("omnigent") != null' <<<"${selection}" >/dev/null; then
+      echo "Refusing to retire ${legacy_app} without redeploying Omnigent." >&2
+      exit 1
+    fi
+    databricks apps get "${replacement_app}" -o json >/dev/null
+    printf 'Retiring replaced MCP App %s\n' "${legacy_app}"
+    databricks apps delete "${legacy_app}" --auto-approve
+  else
+    app_lookup_status=$?
+    if [[ "${app_lookup_status}" -ne 1 ]]; then
+      exit "${app_lookup_status}"
+    fi
+  fi
+fi

@@ -203,7 +203,7 @@ def main() -> None:
         ),
     )
     prefix = args.target
-    mcp_url = _wait_for_app(client, f"{prefix}-sandpit-mcp-tools")
+    mcp_url = _wait_for_app(client, f"mcp-{prefix}-sandpit-tools")
     agent_url = _wait_for_app(client, f"{prefix}-sandpit-langchain-agent")
     omnigent_url = _wait_for_app(client, f"{prefix}-sandpit-omnigent")
     _progress("All three runtime-example Databricks Apps report RUNNING.")
