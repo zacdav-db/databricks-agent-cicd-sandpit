@@ -121,11 +121,6 @@ jobs:
         run: |
           uv pip install --system \
             -r requirements-ci.txt \
-            -r agent_platform/requirements.txt \
-            -r agents/claude-assistant/requirements.txt \
-            -r agents/gemini-assistant/requirements.txt \
-            -r agents/langchain-assistant/requirements.txt \
-            -r agents/openai-assistant/requirements.txt \
             -r src/langchain_agent/requirements.txt \
             -r src/mcp_server/requirements.txt
       - name: Compose folder-defined agents
@@ -144,6 +139,20 @@ jobs:
           python-version: "3.11"
       - name: Compile generated Apps with Python 3.11
         run: python -m compileall -q .generated/bundles
+      - name: Validate the pinned tracing integrations
+        run: |
+          uv venv --python python .tracing-test-venv
+          uv pip install --python .tracing-test-venv/bin/python \
+            -r agent_platform/requirements.txt \
+            -r agents/claude-assistant/requirements.txt \
+            -r agents/gemini-assistant/requirements.txt \
+            -r agents/langchain-assistant/requirements.txt \
+            -r agents/openai-assistant/requirements.txt
+          PYTHONPATH="agent_platform" \
+          MLFLOW_TRACKING_URI="file:${RUNNER_TEMP}/tracing-integration-mlruns" \
+          MLFLOW_EXPERIMENT_NAME="tracing-integration-test" \
+            .tracing-test-venv/bin/python -c \
+              "from _platform_tracing import configure_tracing; assert configure_tracing() == ('langchain', 'openai', 'anthropic', 'google.genai')"
       - name: Validate the external agent bootstrap
         run: |
           uv venv --python python .external-test-venv
