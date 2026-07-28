@@ -45,8 +45,9 @@ The deployment is idempotent. It:
 
 1. Composes folder-defined agents.
 2. Selects changed deployment units.
-3. Creates or updates the target schema, functions, experiment, and trace
-   tables.
+3. Creates missing target schema, functions, experiment, and trace tables.
+   Existing functions are preserved so an isolated App deployment cannot
+   discard the App identity grants attached to them.
 4. Validates and deploys each selected DAB.
 5. Starts each selected unit.
 6. Registers every selected agent App in Unity AI Gateway and verifies its
@@ -62,6 +63,11 @@ When all runtime Apps are selected, they deploy in dependency order:
 
 Local deployment selects every unit. CI instead supplies the push's base and
 head commits, so an agent-only change deploys only that agent.
+
+Bootstrap deliberately uses `CREATE FUNCTION IF NOT EXISTS`. Changing a
+function body is an explicit migration: update it intentionally, then redeploy
+each App that needs an `EXECUTE` grant. This keeps unrelated App deployments
+from replacing a function and silently dropping another App's permissions.
 
 ## Useful commands
 

@@ -12,11 +12,13 @@ AGENT_PLATFORM_PATHS = (
     "scripts/compose_agents.py",
 )
 DEPLOYMENT_PLATFORM_PATHS = (
+    "scripts/bootstrap_resources.py",
     "scripts/deploy_agent.sh",
     "scripts/deploy_runtime_app.sh",
     "scripts/deploy_target.sh",
     "scripts/migrate_app_bundle.sh",
     "scripts/register_uc_agent.py",
+    "scripts/select_deployments.py",
     "scripts/smoke_agent.py",
     "scripts/smoke_runtime_app.py",
     "scripts/smoke_test.py",

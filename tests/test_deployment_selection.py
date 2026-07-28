@@ -65,7 +65,9 @@ def test_runtime_app_change_selects_only_that_app() -> None:
 @pytest.mark.parametrize(
     "path",
     [
+        "scripts/bootstrap_resources.py",
         "scripts/migrate_app_bundle.sh",
+        "scripts/select_deployments.py",
         "scripts/smoke_test.py",
     ],
 )
