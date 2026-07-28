@@ -44,7 +44,7 @@ flowchart LR
 | Component | Purpose |
 | --- | --- |
 | `*-sandpit-langchain-agent` | FastAPI LangChain agent using a Databricks Foundation Model and managed Unity Catalog function MCP servers. |
-| `*-sandpit-mcp-tools` | Custom Streamable HTTP MCP server with tools and a bridge to the LangChain App. |
+| `mcp-*-sandpit-tools` | Custom Streamable HTTP MCP server with tools and a bridge to the LangChain App. The `mcp-` prefix makes the App discoverable as an MCP server in AI Playground. |
 | `*-sandpit-omnigent` | Omnigent supervisor that uses the custom MCP, a managed UC function, and approval policies. |
 | `*-agent-langchain-assistant` | Example App using LangChain through the folder-defined agent contract. |
 | Managed Functions MCP | Databricks-managed MCP surface over the target's Unity Catalog functions. |
@@ -68,7 +68,8 @@ Each DAB maps its supported objects at the strongest level currently available:
 - Agent Services currently provide beta inventory and permissions. Live
   traffic continues to use the DAB-deployed App endpoints.
 - The custom MCP remains a stateless Databricks App. Databricks does not
-  currently support registering an App as a Unity Catalog MCP Service.
+  currently support registering an App as a Unity Catalog MCP Service. Its
+  App name starts with `mcp-`, as required for AI Playground discovery.
 - Trace data is governed in Unity Catalog rather than written to a shared,
   cross-target table.
 
@@ -82,6 +83,7 @@ native App resources with two platform scripts:
   client to reconcile and verify the beta Gateway Agent Service resources.
 
 See the Databricks documentation for
+[hosting custom MCP servers as Apps](https://docs.databricks.com/aws/en/agents/mcp/custom-mcp),
 [managed MCP servers](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp),
 [Agent Services](https://docs.databricks.com/aws/en/ai-gateway/agent-services),
 and

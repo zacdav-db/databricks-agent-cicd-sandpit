@@ -73,7 +73,7 @@ def _smoke_langchain(
 
 
 def _smoke_mcp(client: WorkspaceClient, target: str) -> dict[str, Any]:
-    url = _wait_for_app(client, f"{target}-sandpit-mcp-tools")
+    url = _wait_for_app(client, f"mcp-{target}-sandpit-tools")
     endpoint = f"{url}/mcp"
     _mcp_request(
         client,
