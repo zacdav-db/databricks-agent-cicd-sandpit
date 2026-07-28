@@ -588,6 +588,23 @@ def test_omnigent_launcher_renders_direct_langchain_delegate(
         shutil.rmtree(bundle.parent)
 
 
+def test_omnigent_launcher_uses_one_identity_behind_app_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "omnigent_launcher_identity",
+        ROOT / "src" / "omnigent_app" / "launch.py",
+    )
+    monkeypatch.delenv("OMNIGENT_LOCAL_SINGLE_USER", raising=False)
+    monkeypatch.delenv("OMNIGENT_AUTH_HEADER", raising=False)
+
+    module._configure_single_user_identity()
+
+    assert module.os.environ["OMNIGENT_LOCAL_SINGLE_USER"] == "1"
+    assert module.os.environ["OMNIGENT_AUTH_HEADER"] == module.LOCAL_AUTH_HEADER
+    assert module.LOCAL_AUTH_HEADER != "X-Forwarded-Email"
+
+
 def test_omnigent_direct_tool_invokes_langchain_app(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

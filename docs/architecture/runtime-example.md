@@ -134,6 +134,11 @@ LangChain App records its own MLflow trace, including its model and MCP tool
 spans. The custom MCP is independently deployable and contains no callback or
 bridge to LangChain.
 
+The sandpit supervisor is one Omnigent user behind the
+[Databricks Apps authentication boundary](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/auth).
+This keeps its colocated host visible to both interactive users and the CI
+service principal without bypassing App authentication.
+
 Databricks Apps supplies Python 3.11, while Omnigent 0.6 requires Python 3.12.
 The Omnigent launcher uses `uvx` for an isolated Python 3.12 runtime. This
 sandpit uses Omnigent local single-user mode; a multi-user rollout should use
