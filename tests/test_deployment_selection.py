@@ -6,6 +6,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -21,16 +23,22 @@ def _load_selector():
 
 
 select_deployments = _load_selector().select_deployments
-AGENTS = ["claude-assistant", "gemini-assistant", "langchain-assistant"]
+AGENTS = [
+    "claude-assistant",
+    "gemini-assistant",
+    "langchain-assistant",
+    "openai-assistant",
+]
 
 
-def test_agent_change_selects_only_that_agent() -> None:
+@pytest.mark.parametrize("agent", AGENTS)
+def test_agent_change_selects_only_that_agent(agent: str) -> None:
     assert select_deployments(
-        ["agents/gemini-assistant/agent.py"],
+        [f"agents/{agent}/agent.py"],
         AGENTS,
     ) == {
         "apps": [],
-        "agents": ["gemini-assistant"],
+        "agents": [agent],
     }
 
 

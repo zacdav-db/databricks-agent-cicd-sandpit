@@ -308,12 +308,18 @@ def test_ci_promotes_dev_to_main_before_production() -> None:
     assert workflow["on"]["push"]["branches"] == ["dev", "main"]
     assert workflow["on"]["pull_request"]["branches"] == ["dev", "main"]
     assert "workflow_dispatch" not in workflow["on"]
-    assert workflow["jobs"]["deploy-dev"]["if"] == (
-        "github.event_name == 'push' && github.ref == 'refs/heads/dev'"
-    )
-    assert workflow["jobs"]["deploy-prod"]["if"] == (
-        "github.event_name == 'push' && github.ref == 'refs/heads/main'"
-    )
+    dev_condition = workflow["jobs"]["deploy-dev"]["if"]
+    prod_condition = workflow["jobs"]["deploy-prod"]["if"]
+    assert "github.ref == 'refs/heads/dev'" in dev_condition
+    assert "github.ref == 'refs/heads/main'" in prod_condition
+    assert "needs.select-deployments.outputs.deployable == 'true'" in dev_condition
+    assert "needs.select-deployments.outputs.deployable == 'true'" in prod_condition
+    selector = workflow["jobs"]["select-deployments"]
+    assert selector["outputs"]["selection"] == "${{ steps.select.outputs.selection }}"
+    assert selector["outputs"]["deployable"] == "${{ steps.select.outputs.deployable }}"
+    assert "select-deployments" in workflow["jobs"]["package-deployment"]["needs"]
+    assert "select-deployments" in workflow["jobs"]["deploy-dev"]["needs"]
+    assert "select-deployments" in workflow["jobs"]["deploy-prod"]["needs"]
     assert "production-promotion" in workflow["jobs"]["deploy-prod"]["needs"]
     promotion_step = workflow["jobs"]["promotion-source"]["steps"][0]
     assert promotion_step["env"]["HEAD_BRANCH"] == "${{ github.head_ref }}"

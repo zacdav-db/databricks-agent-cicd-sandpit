@@ -44,10 +44,11 @@ independent CODEOWNER approval when a second reviewer is added.
 
 A merged pull request pushes to `dev`. GitHub Actions then:
 
-1. Repeats the quality gate.
-2. Builds a short-lived deployment wheelhouse.
-3. Compares the previous and current commit and selects deployment units by
-   path.
+1. Compares the previous and current commit and selects deployment units by
+   path while the quality gate runs.
+2. Stops before packaging or requesting the deployment runner when no
+   deployable unit changed.
+3. Builds a short-lived deployment wheelhouse only for a deployable change.
 4. Bootstraps `dev_agent_cicd` only when an App deployment is selected.
 5. Validates, deploys, starts, registers, and smoke-tests only the selected
    unit.
@@ -57,6 +58,11 @@ the injected `agent_platform/**` intentionally deploys every folder-defined
 agent, one at a time. Changes under `src/langchain_agent/`, `src/mcp_server/`,
 or `src/omnigent_app/` select only that App. Documentation- and test-only
 changes deploy nothing.
+
+The selector result is a named GitHub Actions job output, so packaging and
+deployment jobs cannot start before the scope is known. The deployment script
+recomputes the selection from the same immutable commit range as a
+defense-in-depth check.
 
 ## Production promotion
 
