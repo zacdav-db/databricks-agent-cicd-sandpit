@@ -142,4 +142,7 @@ service principal without bypassing App authentication.
 Databricks Apps supplies Python 3.11, while Omnigent 0.6 requires Python 3.12.
 The Omnigent launcher uses `uvx` for an isolated Python 3.12 runtime. This
 sandpit uses Omnigent local single-user mode; a multi-user rollout should use
-its shared-server SSO mode.
+its shared-server SSO mode. Omnigent filters the environment of spawned
+runners, so the launcher explicitly passes through only the deployment-owned
+LangChain App URL; Databricks credentials continue through Omnigent's built-in
+Databricks profile handling.
