@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Any
 
 from databricks_langchain import ChatDatabricks
 
-from agent_sdk import AgentContext
-
 
 @lru_cache(maxsize=1)
-def _model(endpoint: str) -> ChatDatabricks:
-    return ChatDatabricks(endpoint=endpoint, temperature=0.1, max_tokens=300)
+def _model() -> ChatDatabricks:
+    return ChatDatabricks(
+        endpoint=os.environ["MODEL_ENDPOINT"],
+        temperature=0.1,
+        max_tokens=300,
+    )
 
 
 def _text(response: Any) -> str:
@@ -20,9 +23,9 @@ def _text(response: Any) -> str:
     return content if isinstance(content, str) else str(content)
 
 
-async def invoke(message: str, context: AgentContext) -> str:
+async def invoke(message: str) -> str:
     """Answer one message using the centrally approved model binding."""
-    response = await _model(context.model_endpoint).ainvoke(
+    response = await _model().ainvoke(
         [
             {
                 "role": "system",

@@ -15,10 +15,8 @@ import mlflow
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from agent_sdk import AgentContext
-
 logger = logging.getLogger(__name__)
-Invoker = Callable[[str, AgentContext], str | Awaitable[str]]
+Invoker = Callable[[str], str | Awaitable[str]]
 INVOCATION_TIMEOUT_SECONDS = 120.0
 
 
@@ -46,18 +44,23 @@ def _invoker() -> Invoker:
     if not callable(candidate):
         raise RuntimeError(f"Agent entrypoint {module_name}:{function_name} is not callable.")
     parameters = list(inspect.signature(candidate).parameters.values())
-    if len(parameters) != 2:
-        raise RuntimeError("Agent entrypoints must accept message and context.")
+    if len(parameters) != 1:
+        raise RuntimeError(
+            "Agent entrypoints must accept exactly one argument named message.",
+        )
+    parameter = parameters[0]
+    if (
+        parameter.name != "message"
+        or parameter.kind not in {
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        }
+        or parameter.default is not inspect.Parameter.empty
+    ):
+        raise RuntimeError(
+            "Agent entrypoints must accept exactly one argument named message.",
+        )
     return candidate
-
-
-@lru_cache(maxsize=1)
-def _context() -> AgentContext:
-    return AgentContext(
-        name=os.environ["AGENT_NAME"],
-        model_endpoint=os.environ["MODEL_ENDPOINT"],
-        deployment_env=os.environ["DEPLOYMENT_ENV"],
-    )
 
 
 @lru_cache(maxsize=1)
@@ -97,19 +100,18 @@ async def invoke(request: InvocationRequest) -> InvocationResponse:
     try:
         _configure_tracing()
         with mlflow.start_span(
-            name=f"generated_agent.{_context().name}",
+            name=f"generated_agent.{os.environ['AGENT_NAME']}",
             span_type="CHAIN",
         ) as span:
             span.set_inputs({"message": request.input})
             invoker = _invoker()
             with anyio.fail_after(INVOCATION_TIMEOUT_SECONDS):
                 if inspect.iscoroutinefunction(invoker):
-                    result: Any = await invoker(request.input, _context())
+                    result: Any = await invoker(request.input)
                 else:
                     result = await anyio.to_thread.run_sync(
                         invoker,
                         request.input,
-                        _context(),
                         abandon_on_cancel=True,
                     )
                     if inspect.isawaitable(result):

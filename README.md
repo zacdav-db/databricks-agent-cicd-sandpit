@@ -3,14 +3,15 @@
 A working reference for deploying agents and governed tools to Databricks Apps
 with a Databricks Asset Bundle (DAB) and GitHub Actions.
 
-It proves three things:
+This repository is an example of how teams can:
 
-1. A LangChain agent, custom MCP server, and Omnigent supervisor can work
-   together as separate Databricks Apps.
-2. Changes can move through protected `dev` and `main` branches before DAB
-   deployment to isolated dev and prod namespaces.
-3. An author can add a new agent with one small folder while the platform
-   generates the App runtime, DAB resource, permissions, tracing, and CI/CD.
+- Build agents on Databricks, deploy them through Databricks Apps, and register
+  the deployed agents and governed tools in Unity Catalog.
+- Promote applications and agents through a protected dev-to-prod process
+  using GitHub Actions and DABs.
+- Offer a centrally managed deployment path where authors add a small agent
+  folder and inherit the App runtime, DAB resources, permissions, tracing,
+  validation, and CI/CD.
 
 ## Start here
 
@@ -31,15 +32,17 @@ model: default
 entrypoint: agent:invoke
 ```
 
-The entrypoint receives a message and platform context:
+The entrypoint is one ordinary Python function. It has no platform SDK
+dependency:
 
 ```python
-from agent_sdk import AgentContext
-
-
-async def invoke(message: str, context: AgentContext) -> str:
-    return f"{context.name} received: {message}"
+def invoke(message: str) -> str:
+    return f"Received: {message}"
 ```
+
+The function may call an existing LangChain, OpenAI Agents SDK, or custom
+agent. The platform normalizes only this invocation boundary and supplies the
+approved model endpoint as `MODEL_ENDPOINT`.
 
 After completing the
 [local setup](docs/operations/deployment.md#setup), run the contract checks:
@@ -61,7 +64,7 @@ See the [agent author guide](agents/README.md) for the exact rules and the
 
 The repository is easier to understand as three separate views.
 
-### 1. Runtime example
+### Runtime example
 
 The original example connects three Apps with a managed Unity Catalog tool
 surface. The LangChain App owns model calls and MLflow tracing.
@@ -89,7 +92,7 @@ flowchart LR
 
 [Runtime architecture and governance details](docs/architecture/runtime-example.md)
 
-### 2. GitHub Actions and promotion
+### GitHub Actions and promotion
 
 CI/CD is a branch promotion flow. Production is reachable only from the
 repository's `dev` branch.
@@ -112,7 +115,7 @@ flowchart LR
 
 [CI/CD, authentication, runner, and isolation details](docs/architecture/cicd.md)
 
-### 3. Folder-defined agent contract
+### Folder-defined agent contract
 
 The author supplies code and three manifest fields. The platform composes the
 deployable App and DAB resource.
@@ -155,7 +158,6 @@ paths.
 | Path | Purpose |
 | --- | --- |
 | [`agents/`](agents) | Minimal author-owned agent folders. |
-| [`agent_sdk/`](agent_sdk) | Stable context passed to agent entrypoints. |
 | [`agent_platform/`](agent_platform) | Platform model policy and injected App runtime. |
 | [`scripts/compose_agents.py`](scripts/compose_agents.py) | Strict contract validation and deterministic DAB composition. |
 | [`resources/apps.yml`](resources/apps.yml) | The three explicit example App resources. |

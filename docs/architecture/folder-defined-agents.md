@@ -54,15 +54,28 @@ entrypoint: agent:invoke
 The entrypoint may be synchronous or asynchronous:
 
 ```python
-from agent_sdk import AgentContext
-
-
-async def invoke(message: str, context: AgentContext) -> str:
-    return f"{context.name} received: {message}"
+def invoke(message: str) -> str:
+    return f"Received: {message}"
 ```
 
-`AgentContext` supplies the immutable agent name, resolved model endpoint, and
-deployment target.
+This is a plain Python callable, not a base class or platform SDK. Agent code
+can use LangChain, the OpenAI Agents SDK, or a custom implementation. When the
+agent needs the approved Databricks model, it reads `MODEL_ENDPOINT`; the
+platform resolves that value from the manifest's model alias and grants the
+App permission to query it.
+
+The one-function boundary is deliberate. Agent frameworks do not share a
+stable input and output object, so automatically detecting framework objects
+would be brittle. The author makes that framework-specific conversion inside
+`invoke`; the centrally managed platform handles everything around it.
+
+For example, an existing async agent only needs a thin call:
+
+```python
+async def invoke(message: str) -> str:
+    result = await existing_agent.ainvoke(message)
+    return str(result)
+```
 
 ## What the platform adds
 
@@ -70,11 +83,10 @@ deployment target.
 `.generated/`. For each agent it:
 
 1. Copies the validated author source.
-2. Injects the stable `agent_sdk`.
-3. Injects the platform FastAPI runtime.
-4. Combines the exact-pinned platform and author dependencies.
-5. Emits a deterministic DAB App resource.
-6. Records the resource in a deployment index consumed by registration and
+2. Injects the platform FastAPI runtime.
+3. Combines the exact-pinned platform and author dependencies.
+4. Emits a deterministic DAB App resource.
+5. Records the resource in a deployment index consumed by registration and
    smoke tests.
 
 The platform owns:
@@ -115,12 +127,14 @@ code runs with its App identity and can use whatever that identity is granted.
 One folder creates one App identity and scaling boundary. The Python may still
 coordinate several logical subagents internally.
 
-V1 remains in this repository so the contract, runtime, DAB composition, and
-deployment logic change atomically. Once stable, the composer and `agent_sdk`
-can become a separately versioned platform package.
+The platform remains in this repository so the contract, runtime, DAB
+composition, and deployment logic change atomically. Once stable, the
+composer and runtime can become a separately versioned platform package
+without adding an author-facing SDK.
 
-Folder deletion and renaming are destructive infrastructure operations and are
-blocked in v1. Add an explicit retirement workflow before allowing them.
+Folder deletion and renaming are destructive infrastructure operations and
+are currently blocked. Add an explicit retirement workflow before allowing
+them.
 
 Future functions, MCP servers, App dependencies, secrets, or access profiles
 should be introduced as typed, allowlisted contract capabilities. Raw DAB YAML

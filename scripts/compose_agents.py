@@ -27,8 +27,6 @@ RESERVED_NAMES = {"langchain-agent", "mcp-tools", "omnigent"}
 RESERVED_PATHS = {
     "_agent_runtime",
     "_agent_runtime.py",
-    "agent_sdk",
-    "agent_sdk.py",
 }
 PLATFORM_PACKAGES = {"fastapi", "mlflow", "pydantic", "uvicorn"}
 SECRET_SUFFIXES = {".key", ".p12", ".pem"}
@@ -169,14 +167,14 @@ def _validate_python(folder: Path, entrypoint: str) -> None:
     arguments = candidate.args
     positional = [*arguments.posonlyargs, *arguments.args]
     if (
-        [argument.arg for argument in positional] != ["message", "context"]
+        [argument.arg for argument in positional] != ["message"]
         or arguments.vararg
         or arguments.kwarg
         or arguments.kwonlyargs
         or arguments.defaults
     ):
         raise ContractError(
-            "Entrypoint must be invoke(message, context) with no extra arguments.",
+            "Entrypoint must accept exactly one argument named message.",
         )
 
 
@@ -341,7 +339,6 @@ def _app_resource(agent: AgentDefinition) -> dict[str, Any]:
                 {"name": "MODEL_ENDPOINT", "value_from": "llm"},
                 {"name": "AGENT_NAME", "value": agent.name},
                 {"name": "AGENT_ENTRYPOINT", "value": agent.entrypoint},
-                {"name": "DEPLOYMENT_ENV", "value": "${bundle.target}"},
             ],
         },
         "resources": _trace_resources(agent.model_endpoint),
@@ -383,7 +380,6 @@ def compose(root: Path) -> dict[str, Any]:
                 root / "agent_platform" / "runtime.py",
                 destination / "_agent_runtime.py",
             )
-            shutil.copytree(root / "agent_sdk", destination / "agent_sdk")
             dependency_lines = [platform_requirements, *agent.requirements]
             (destination / "requirements.txt").write_text(
                 "\n".join(line for line in dependency_lines if line).rstrip() + "\n",
@@ -405,7 +401,7 @@ def compose(root: Path) -> dict[str, Any]:
             yaml.safe_dump(bundle_payload, sort_keys=False),
             encoding="utf-8",
         )
-        index = {"contract_version": 1, "agents": index_agents}
+        index = {"contract_version": 2, "agents": index_agents}
         (temporary / "agent-index.json").write_text(
             json.dumps(index, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",

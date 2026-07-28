@@ -28,13 +28,17 @@ so the environment-prefixed Databricks App name remains valid.
 The entrypoint may be synchronous or asynchronous and must implement:
 
 ```python
-def invoke(message: str, context: AgentContext) -> str: ...
+def invoke(message: str) -> str: ...
 ```
 
+No platform SDK import is required. Call an existing LangChain, OpenAI Agents
+SDK, or custom implementation inside this function. The approved model alias
+is resolved to the `MODEL_ENDPOINT` environment variable.
+
 The platform owns FastAPI, routes, health checks, authentication, model
-binding, MLflow tracing, the trace experiment, permissions, target naming and
-DAB generation. Authors cannot provide raw environment variables, resource
-grants, commands or DAB fragments.
+binding, MLflow tracing, the trace experiment, permissions, target naming,
+and DAB generation. Authors cannot provide raw environment variables,
+resource grants, commands, or DAB fragments.
 
 Run the same checks as CI:
 
