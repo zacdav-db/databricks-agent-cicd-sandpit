@@ -31,7 +31,7 @@ not committed.
 One direct child under `agents/` becomes one isolated Databricks App:
 
 ```text
-agents/minimal-assistant/
+agents/langchain-assistant/
 ├── agent.yaml
 ├── agent.py
 └── requirements.txt
@@ -40,7 +40,7 @@ agents/minimal-assistant/
 The complete manifest has three fields:
 
 ```yaml
-name: minimal-assistant
+name: langchain-assistant
 model: default
 entrypoint: agent:invoke
 ```
@@ -83,7 +83,7 @@ The contract is exercised by four independently deployed folders:
 
 | Folder | Author library | Model alias |
 | --- | --- | --- |
-| [`minimal-assistant`](../../agents/minimal-assistant) | LangChain | `default` |
+| [`langchain-assistant`](../../agents/langchain-assistant) | LangChain | `default` |
 | [`gemini-assistant`](../../agents/gemini-assistant) | Google Gen AI SDK | `gemini` |
 | [`claude-assistant`](../../agents/claude-assistant) | Anthropic SDK | `claude` |
 | [`openai-assistant`](../../agents/openai-assistant) | Databricks OpenAI client | `openai` |
@@ -128,7 +128,7 @@ The platform owns:
 Every folder gets a self-contained generated directory:
 
 ```text
-.generated/bundles/minimal-assistant/
+.generated/bundles/langchain-assistant/
 ├── databricks.yml
 └── app/
 ```

@@ -56,9 +56,9 @@ head commits, so an agent-only change deploys only that agent.
 ## Useful commands
 
 ```bash
-scripts/deploy_agent.sh dev minimal-assistant <experiment-id>
+scripts/deploy_agent.sh dev langchain-assistant <experiment-id>
 
-cd .generated/bundles/minimal-assistant
+cd .generated/bundles/langchain-assistant
 databricks bundle validate -t dev --var experiment_id=<id>
 databricks bundle deploy -t dev --var experiment_id=<id>
 
@@ -69,7 +69,7 @@ databricks bundle deploy -t dev
 databricks apps logs dev-sandpit-langchain-agent -p sandpit
 databricks apps logs dev-sandpit-mcp-tools -p sandpit
 databricks apps logs dev-sandpit-omnigent -p sandpit
-databricks apps logs dev-agent-minimal-assistant -p sandpit
+databricks apps logs dev-agent-langchain-assistant -p sandpit
 ```
 
 ## Target namespaces
