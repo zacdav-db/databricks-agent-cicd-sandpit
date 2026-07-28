@@ -1,0 +1,3 @@
+name: gemini-assistant
+model: gemini
+entrypoint: agent:invoke

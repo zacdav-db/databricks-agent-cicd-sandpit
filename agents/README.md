@@ -40,6 +40,20 @@ binding, MLflow tracing, the trace experiment, permissions, target naming,
 and DAB generation. Authors cannot provide raw environment variables,
 resource grants, commands, or DAB fragments.
 
+## Examples
+
+All four examples implement the same one-function contract:
+
+| Folder | Implementation |
+| --- | --- |
+| [`minimal-assistant`](minimal-assistant) | LangChain `ChatDatabricks` |
+| [`gemini-assistant`](gemini-assistant) | Native Google Gen AI SDK |
+| [`claude-assistant`](claude-assistant) | Native Anthropic SDK |
+| [`openai-assistant`](openai-assistant) | Databricks-authenticated OpenAI SDK |
+
+The provider-native examples create a `WorkspaceClient()` and reuse its host
+and short-lived authorization. No provider API key is stored in the folder.
+
 Run the same checks as CI:
 
 ```bash

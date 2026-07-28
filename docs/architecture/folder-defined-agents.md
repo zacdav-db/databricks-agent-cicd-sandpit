@@ -77,6 +77,29 @@ async def invoke(message: str) -> str:
     return str(result)
 ```
 
+## Provider-native examples
+
+The contract is exercised by four independently deployed folders:
+
+| Folder | Author library | Model alias |
+| --- | --- | --- |
+| [`minimal-assistant`](../../agents/minimal-assistant) | LangChain | `default` |
+| [`gemini-assistant`](../../agents/gemini-assistant) | Google Gen AI SDK | `gemini` |
+| [`claude-assistant`](../../agents/claude-assistant) | Anthropic SDK | `claude` |
+| [`openai-assistant`](../../agents/openai-assistant) | Databricks OpenAI client | `openai` |
+
+The Gemini and Claude implementations use the providers' native
+Databricks-compatible APIs. The OpenAI implementation uses
+`DatabricksOpenAI`, which extends the OpenAI client with Databricks
+authentication. In every case, `WorkspaceClient()` resolves the App identity;
+no static provider or Databricks token is passed through the manifest.
+
+See the official Databricks guides for the
+[Google Gemini API](https://docs.databricks.com/aws/en/machine-learning/model-serving/query-gemini-api),
+[Anthropic Messages API](https://docs.databricks.com/aws/en/machine-learning/model-serving/query-anthropic-messages),
+and
+[OpenAI-compatible client](https://docs.databricks.com/aws/en/machine-learning/model-serving/query-chat-models).
+
 ## What the platform adds
 
 `scripts/compose_agents.py` validates every folder and atomically builds

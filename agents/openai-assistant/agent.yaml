@@ -1,0 +1,3 @@
+name: openai-assistant
+model: openai
+entrypoint: agent:invoke
