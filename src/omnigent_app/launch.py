@@ -59,13 +59,8 @@ def _render_agent_bundle() -> pathlib.Path:
     shutil.copytree(source, destination)
 
     replacements = {
-        "${CUSTOM_MCP_URL}": _require_env("CUSTOM_MCP_URL"),
-        "${DATABRICKS_HOST}": _databricks_host(),
         "${DATABRICKS_CONFIG_PROFILE}": _require_env("DATABRICKS_CONFIG_PROFILE"),
-        "${DATABRICKS_WAREHOUSE_ID}": _require_env("DATABRICKS_WAREHOUSE_ID"),
         "${MODEL_ENDPOINT}": _require_env("MODEL_ENDPOINT"),
-        "${UC_FUNCTION_MCP_PATH}": _require_env("UC_FUNCTION_MCP_PATH"),
-        "${UC_FUNCTION_TOOL_NAME}": _require_env("UC_FUNCTION_TOOL_NAME"),
     }
     for config_path in destination.rglob("*.yaml"):
         rendered = config_path.read_text(encoding="utf-8")
@@ -75,14 +70,6 @@ def _render_agent_bundle() -> pathlib.Path:
             raise RuntimeError(f"Unresolved template variable in {config_path}.")
         config_path.write_text(rendered, encoding="utf-8")
     return destination
-
-
-def _set_uc_function_variables() -> None:
-    parts = _require_env("UC_FUNCTION_FULL_NAME").split(".")
-    if len(parts) != 3 or any(not part.replace("_", "").isalnum() for part in parts):
-        raise RuntimeError("UC_FUNCTION_FULL_NAME must be catalog.schema.function.")
-    os.environ["UC_FUNCTION_MCP_PATH"] = "/".join(parts)
-    os.environ["UC_FUNCTION_TOOL_NAME"] = "__".join(parts)
 
 
 def _wait_for_server(
@@ -162,8 +149,10 @@ def main() -> None:
         )
         os.environ["DATABRICKS_CONFIG_FILE"] = str(profile_path)
         os.environ["DATABRICKS_CONFIG_PROFILE"] = "app"
-        os.environ["CUSTOM_MCP_URL"] = _app_url(client, "CUSTOM_MCP_APP_NAME")
-        _set_uc_function_variables()
+        os.environ["LANGCHAIN_AGENT_URL"] = _app_url(
+            client,
+            "LANGCHAIN_AGENT_APP_NAME",
+        )
         agent_bundle = _render_agent_bundle()
 
         port = os.getenv("DATABRICKS_APP_PORT", "8000")

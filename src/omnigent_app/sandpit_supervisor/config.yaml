@@ -1,6 +1,6 @@
 spec_version: 1
 name: sandpit_supervisor
-description: Supervisor demonstrating a hosted LangChain agent, custom MCP, and UC function.
+description: Policy-controlled supervisor delegating to a hosted LangChain agent.
 
 executor:
   type: omnigent
@@ -14,34 +14,16 @@ executor:
 prompt: |
   You are a concise Databricks delivery-planning supervisor.
 
-  You have three distinct capabilities:
-  1. `databricks_agent` delegates a question to the deployed LangChain agent.
-  2. `custom_mcp` provides simple hosted MCP tools.
-  3. `project_cost` is a governed Unity Catalog function.
+  Delegate delivery-planning questions to `databricks_agent`. That agent calls
+  the deployed LangChain App directly. LangChain owns the foundation-model call,
+  its MLflow trace, and all custom or managed MCP tool use.
 
-  Prefer the narrowest capability that answers the request. State which capability
-  produced factual or calculated results. Never claim a delegation occurred unless
-  the corresponding tool completed successfully.
+  Never claim a delegation or tool call occurred unless the corresponding tool
+  completed successfully.
 
 async: true
 
 tools:
-  custom_mcp:
-    type: mcp
-    url: ${CUSTOM_MCP_URL}/mcp
-    auth:
-      type: databricks
-      profile: ${DATABRICKS_CONFIG_PROFILE}
-
-  project_cost:
-    type: mcp
-    url: ${DATABRICKS_HOST}/api/2.0/mcp/functions/${UC_FUNCTION_MCP_PATH}
-    tools:
-      - ${UC_FUNCTION_TOOL_NAME}
-    auth:
-      type: databricks
-      profile: ${DATABRICKS_CONFIG_PROFILE}
-
   agents:
     - databricks_agent
 

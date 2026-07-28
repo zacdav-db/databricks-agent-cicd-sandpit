@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
+import re
 import time
 from datetime import datetime
 from typing import Any
@@ -23,8 +25,14 @@ def _api_json(
     url: str,
     *,
     body: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    payload = client.api_client.do(method, url=url, body=body)
+    payload = client.api_client.do(
+        method,
+        url=url,
+        body=body,
+        headers=headers,
+    )
     if not isinstance(payload, dict):
         raise RuntimeError(f"{method} {url} returned a non-object response.")
     return payload
@@ -54,21 +62,13 @@ def _mcp_first_cell(result: dict[str, Any]) -> Any:
     raise RuntimeError(f"Managed MCP result did not contain a row: {result}")
 
 
-def _find_nonempty_string(value: Any, key: str) -> str | None:
-    if isinstance(value, dict):
-        candidate = value.get(key)
-        if isinstance(candidate, str) and candidate.strip():
-            return candidate
-        for child in value.values():
-            found = _find_nonempty_string(child, key)
-            if found:
-                return found
-    elif isinstance(value, list):
-        for child in value:
-            found = _find_nonempty_string(child, key)
-            if found:
-                return found
-    return None
+def _mcp_scalar(result: dict[str, Any]) -> str:
+    """Return one scalar value from an MCP tool response."""
+    for payload in _mcp_json_payloads(result):
+        candidate = payload.get("result", payload) if isinstance(payload, dict) else payload
+        if isinstance(candidate, (str, int, float, bool)):
+            return str(candidate)
+    raise RuntimeError(f"MCP result did not contain a scalar value: {result}")
 
 
 def _wait_for_app(client: WorkspaceClient, name: str, timeout: int = 900) -> str:
@@ -189,6 +189,174 @@ def _mcp_request(
     return payload["result"]
 
 
+def _smoke_omnigent_delegation(
+    client: WorkspaceClient,
+    *,
+    omnigent_url: str,
+    agent_id: str,
+    expected_identity: str,
+    warehouse_id: str,
+    trace_table: str,
+) -> dict[str, Any]:
+    """Exercise approval, direct LangChain delegation, custom MCP, and tracing."""
+    session_id: str | None = None
+    try:
+        session = _api_json(
+            client,
+            "POST",
+            f"{omnigent_url}/v1/sessions",
+            body={"agent_id": agent_id},
+            headers={"Origin": "omnigent://internal"},
+        )
+        session_id = str(session["id"])
+
+        hosts = _api_json(client, "GET", f"{omnigent_url}/v1/hosts")
+        host = next(
+            (
+                item
+                for item in hosts.get("hosts", [])
+                if item.get("status") == "online"
+            ),
+            None,
+        )
+        if host is None:
+            raise RuntimeError(f"Omnigent has no online host: {hosts}")
+        host_id = str(host["host_id"])
+        filesystem = _api_json(
+            client,
+            "GET",
+            f"{omnigent_url}/v1/hosts/{host_id}/filesystem?limit=1",
+        )
+        entries = filesystem.get("data", [])
+        if not entries or "/" not in str(entries[0].get("path", "")):
+            raise RuntimeError(f"Could not resolve the Omnigent host home: {filesystem}")
+        workspace = str(entries[0]["path"]).rsplit("/", maxsplit=1)[0]
+        _api_json(
+            client,
+            "POST",
+            f"{omnigent_url}/v1/hosts/{host_id}/runners",
+            body={"session_id": session_id, "workspace": workspace},
+        )
+
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            snapshot = _api_json(
+                client,
+                "GET",
+                f"{omnigent_url}/v1/sessions/{session_id}",
+            )
+            if snapshot.get("runner_id") and snapshot.get("runner_online"):
+                break
+            time.sleep(2)
+        else:
+            raise TimeoutError("Omnigent did not bind an online runner.")
+
+        _api_json(
+            client,
+            "POST",
+            f"{omnigent_url}/v1/sessions/{session_id}/events",
+            body={
+                "type": "message",
+                "data": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                "Delegate to databricks_agent. Ask LangChain to call "
+                                "get_current_identity from the custom MCP. Return the "
+                                "identity and LangChain trace ID."
+                            ),
+                        },
+                    ],
+                },
+            },
+        )
+
+        deadline = time.monotonic() + 180
+        elicitation: dict[str, Any] | None = None
+        while time.monotonic() < deadline:
+            snapshot = _api_json(
+                client,
+                "GET",
+                f"{omnigent_url}/v1/sessions/{session_id}",
+            )
+            elicitation = next(
+                (
+                    item
+                    for item in snapshot.get("pending_elicitations", [])
+                    if item.get("params", {}).get("policy_name")
+                    == "approve_subagent_spawn"
+                ),
+                None,
+            )
+            if elicitation is not None:
+                break
+            if snapshot.get("status") == "failed":
+                raise RuntimeError(f"Omnigent delegation failed: {snapshot}")
+            time.sleep(2)
+        if elicitation is None:
+            raise TimeoutError("Omnigent did not request subagent approval.")
+
+        elicitation_id = str(elicitation["elicitation_id"])
+        _api_json(
+            client,
+            "POST",
+            (
+                f"{omnigent_url}/v1/sessions/{session_id}/elicitations/"
+                f"{elicitation_id}/resolve"
+            ),
+            body={"action": "accept"},
+        )
+
+        deadline = time.monotonic() + 300
+        final_snapshot: dict[str, Any] | None = None
+        trace_ids: list[str] = []
+        while time.monotonic() < deadline:
+            snapshot = _api_json(
+                client,
+                "GET",
+                f"{omnigent_url}/v1/sessions/{session_id}",
+            )
+            if snapshot.get("status") == "failed":
+                raise RuntimeError(f"Omnigent delegation failed: {snapshot}")
+            if snapshot.get("status") == "idle" and len(snapshot.get("items", [])) > 1:
+                transcript = json.dumps(snapshot.get("items", []))
+                trace_ids = re.findall(
+                    r'trace:/[^\s`"}]+/([0-9a-fA-F]{32})',
+                    transcript,
+                )
+                if expected_identity in transcript and trace_ids:
+                    final_snapshot = snapshot
+                    break
+            time.sleep(3)
+        if final_snapshot is None:
+            raise TimeoutError(
+                "Omnigent delegation did not return the custom MCP identity and "
+                "LangChain trace ID.",
+            )
+
+        trace_id = trace_ids[-1]
+        _wait_for_trace(
+            client,
+            warehouse_id,
+            trace_table,
+            trace_id,
+        )
+        return {
+            "approval_policy": "approve_subagent_spawn",
+            "custom_mcp_identity": expected_identity,
+            "langchain_trace_id": trace_id,
+        }
+    finally:
+        if session_id is not None:
+            with contextlib.suppress(Exception):
+                client.api_client.do(
+                    "DELETE",
+                    url=f"{omnigent_url}/v1/sessions/{session_id}",
+                )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile")
@@ -266,10 +434,11 @@ def main() -> None:
         "health",
         "uppercase",
         "get_current_identity",
-        "invoke_langchain_agent",
     }
     if not required_tools.issubset(tool_names):
         raise RuntimeError(f"Missing MCP tools: {required_tools - tool_names}")
+    if "invoke_langchain_agent" in tool_names:
+        raise RuntimeError("Custom MCP must not proxy back to the LangChain App.")
     mcp_result = _mcp_request(
         client,
         mcp_endpoint,
@@ -279,29 +448,37 @@ def main() -> None:
     )
     if "BUNDLE DEPLOYED" not in json.dumps(mcp_result):
         raise RuntimeError(f"Unexpected MCP result: {mcp_result}")
-    bridge_result = _mcp_request(
+    identity_result = _mcp_request(
         client,
         mcp_endpoint,
         4,
         "tools/call",
-        {
-            "name": "invoke_langchain_agent",
-            "arguments": {
-                "message": "Estimate 5 hours at $200/hour with no contingency.",
-            },
+        {"name": "get_current_identity", "arguments": {}},
+    )
+    custom_mcp_identity = _mcp_scalar(identity_result)
+    _progress(f"Custom MCP exposed and executed all {len(tool_names)} tools.")
+
+    custom_tool_payload = _api_json(
+        client,
+        "POST",
+        f"{agent_url}/api/invocations",
+        body={
+            "input": (
+                "Call get_current_identity from the custom MCP and return its "
+                "exact value."
+            ),
         },
     )
-    bridge_trace_id = next(
-        (
-            trace_id
-            for payload in _mcp_json_payloads(bridge_result)
-            if (trace_id := _find_nonempty_string(payload, "trace_id"))
-        ),
-        None,
-    )
-    if not bridge_trace_id:
-        raise RuntimeError(f"LangChain bridge returned no trace ID: {bridge_result}")
-    _progress(f"Custom MCP exposed and executed all {len(tool_names)} tools.")
+    if not custom_tool_payload.get("trace_id"):
+        raise RuntimeError(
+            f"LangChain custom-MCP call returned no trace ID: {custom_tool_payload}",
+        )
+    if custom_mcp_identity not in custom_tool_payload.get("output", ""):
+        raise RuntimeError(
+            f"LangChain custom-MCP call returned an unexpected result: "
+            f"{custom_tool_payload}",
+        )
+    _progress("LangChain returned the non-inferable custom MCP identity.")
 
     managed_results: dict[str, Any] = {}
     for request_id, (function_name, arguments) in enumerate(
@@ -396,7 +573,13 @@ def main() -> None:
         args.trace_table,
         invocation_payload["trace_id"],
     )
-    _progress("The LangChain trace is queryable in the Unity Catalog spans table.")
+    _wait_for_trace(
+        client,
+        args.warehouse_id,
+        args.trace_table,
+        custom_tool_payload["trace_id"],
+    )
+    _progress("Both LangChain traces are queryable in the Unity Catalog spans table.")
 
     _api_json(client, "GET", f"{omnigent_url}/health")
 
@@ -423,12 +606,22 @@ def main() -> None:
     # The launcher supervises the colocated host process and exits if it fails.
     policy_names = {policy["name"] for policy in omnigent_agent.get("policies", [])}
     mcp_servers = {server["name"] for server in omnigent_agent.get("mcp_servers", [])}
-    required_mcp_servers = {"custom_mcp", "project_cost"}
-    if not required_mcp_servers.issubset(mcp_servers):
+    if mcp_servers:
         raise RuntimeError(
-            f"Missing Omnigent MCP configuration: {required_mcp_servers - mcp_servers}",
+            f"Omnigent must delegate to LangChain, not MCP directly: {mcp_servers}",
         )
-    _progress("Omnigent supervisor and both MCP integrations are registered.")
+    omnigent_delegation = _smoke_omnigent_delegation(
+        client,
+        omnigent_url=omnigent_url,
+        agent_id=str(omnigent_agent["id"]),
+        expected_identity=custom_mcp_identity,
+        warehouse_id=args.warehouse_id,
+        trace_table=args.trace_table,
+    )
+    _progress(
+        "Omnigent approval, LangChain delegation, custom MCP, and trace "
+        "completed end to end.",
+    )
 
     print(
         json.dumps(
@@ -438,7 +631,8 @@ def main() -> None:
                 "managed_mcp_functions": managed_results,
                 "mcp_tool_count": len(tool_names),
                 "mcp_uppercase": mcp_result,
-                "mcp_langchain_bridge": bridge_result,
+                "langchain_custom_mcp": custom_tool_payload,
+                "omnigent_delegation": omnigent_delegation,
                 "omnigent_policies": sorted(policy_names),
                 "omnigent_supervisor": omnigent_agent["name"],
                 "omnigent_url": omnigent_url,
