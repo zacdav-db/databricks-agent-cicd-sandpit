@@ -151,6 +151,7 @@ jobs:
           PYTHONPATH="agent_platform" \
           MLFLOW_TRACKING_URI="file:${RUNNER_TEMP}/tracing-integration-mlruns" \
           MLFLOW_EXPERIMENT_NAME="tracing-integration-test" \
+          MLFLOW_ALLOW_FILE_STORE="true" \
             .tracing-test-venv/bin/python -c \
               "from _platform_tracing import configure_tracing; assert configure_tracing() == ('langchain', 'openai', 'anthropic', 'google.genai')"
       - name: Validate the external agent bootstrap
@@ -162,6 +163,7 @@ jobs:
           PYTHONPATH="agent_platform:examples/external-agent/platform_bootstrap:examples/external-agent" \
           MLFLOW_TRACKING_URI="file:${RUNNER_TEMP}/external-mlruns" \
           MLFLOW_EXPERIMENT_NAME="external-bootstrap-test" \
+          MLFLOW_ALLOW_FILE_STORE="true" \
             .external-test-venv/bin/python -c \
               "import author_agent; from _platform_tracing import configure_tracing; assert configure_tracing() == ('openai',)"
 

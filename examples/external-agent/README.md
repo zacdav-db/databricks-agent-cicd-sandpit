@@ -28,7 +28,15 @@ export MLFLOW_EXPERIMENT_ID="$(
     /Shared/dev-sandpit-agent-cicd-traces \
     -p sandpit \
     -o json |
-    jq -er '.experiment.experiment_id'
+    jq -er '
+      .experiment
+      | select(any(
+          .tags[]?;
+          .key == "mlflow.experiment.databricksTraceDestinationPath"
+          and .value == "zacdav_sandpit_catalog.dev_agent_cicd.dev_sandpit_agent_cicd"
+        ))
+      | .experiment_id
+    '
 )"
 ```
 
