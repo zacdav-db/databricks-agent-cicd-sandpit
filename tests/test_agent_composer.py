@@ -212,7 +212,7 @@ def test_repository_example_composes() -> None:
             "entrypoint": "agent:invoke",
         },
         {
-            "name": "minimal-assistant",
+            "name": "langchain-assistant",
             "model": "default",
             "entrypoint": "agent:invoke",
         },

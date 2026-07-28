@@ -21,7 +21,7 @@ def _load_selector():
 
 
 select_deployments = _load_selector().select_deployments
-AGENTS = ["claude-assistant", "gemini-assistant", "minimal-assistant"]
+AGENTS = ["claude-assistant", "gemini-assistant", "langchain-assistant"]
 
 
 def test_agent_change_selects_only_that_agent() -> None:

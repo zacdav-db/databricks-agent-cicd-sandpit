@@ -45,7 +45,7 @@ flowchart LR
 | `*-sandpit-langchain-agent` | FastAPI LangChain agent using a Databricks Foundation Model and managed Unity Catalog function MCP servers. |
 | `*-sandpit-mcp-tools` | Custom Streamable HTTP MCP server with tools and a bridge to the LangChain App. |
 | `*-sandpit-omnigent` | Omnigent supervisor that uses the custom MCP, a managed UC function, and approval policies. |
-| `*-agent-minimal-assistant` | Example App generated from the minimal folder-defined agent contract. |
+| `*-agent-langchain-assistant` | Example App using LangChain through the folder-defined agent contract. |
 | Managed Functions MCP | Databricks-managed MCP surface over the target's Unity Catalog functions. |
 | Agent Services | Beta Unity Catalog inventory and permissions for the fixed and generated agent Apps. |
 | Trace tables | Four governed OpenTelemetry tables backing the target's MLflow experiment. |

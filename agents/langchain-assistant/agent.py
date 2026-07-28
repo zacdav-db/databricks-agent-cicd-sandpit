@@ -1,4 +1,4 @@
-"""Small example using only the folder-defined agent contract."""
+"""LangChain example using only the folder-defined agent contract."""
 
 from __future__ import annotations
 
