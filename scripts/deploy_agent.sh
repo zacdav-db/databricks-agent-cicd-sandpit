@@ -35,7 +35,7 @@ scripts/migrate_app_bundle.sh \
   "${bundle_dir}" \
   "${resource_key}" \
   "${app_name}" \
-  "${bundle_args[@]:2}"
+  "${bundle_args[@]}"
 
 printf 'Validating isolated %s bundle for %s\n' "${target}" "${agent_name}"
 (
