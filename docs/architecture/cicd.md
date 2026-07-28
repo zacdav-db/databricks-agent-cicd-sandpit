@@ -118,9 +118,11 @@ acceptance test; those consumers are not planned or updated.
 
 Every selected agent is exercised through `/responses` with `"stream": true`.
 The smoke test requires multiple text deltas, a completed item, a terminal
-Server-Sent Event, a returned MLflow trace ID, and a queryable provider child
+Server-Sent Event, a returned MLflow trace ID, and a queryable platform stream
 span. This prevents a route that merely buffers the complete answer from
-passing as streaming.
+passing as streaming. A separate non-streaming probe requires an automatic
+provider child span, because some pinned MLflow provider integrations do not
+yet capture their SDK's streaming API.
 
 Shared bootstrap is non-destructive: it creates Unity Catalog functions only
 when they are missing. It does not replace grant-bearing functions during an

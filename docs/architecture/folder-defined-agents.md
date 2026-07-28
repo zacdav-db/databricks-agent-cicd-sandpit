@@ -151,7 +151,10 @@ and the externally hosted example.
 
 The deployed smoke test sends `"stream": true` to every example and requires
 multiple text deltas, a completed output item, a terminal event, and a
-queryable trace. See Databricks'
+queryable platform stream span. It separately invokes the ordinary entrypoint
+and requires a provider child span, so streaming transport and automatic
+provider instrumentation are both tested within their supported boundaries.
+See Databricks'
 [custom-agent authoring guide](https://docs.databricks.com/aws/en/agents/custom-agents/author-agent)
 for the Responses API event contract.
 

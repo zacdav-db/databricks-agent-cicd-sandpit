@@ -51,8 +51,8 @@ naming convention, not a platform import or manifest field.
 No author import, decorator, base class, or framework-specific adapter is
 required. Automatic SDK spans inherit the active root context in the same
 Python process, producing one trace for the request. For streaming, the root
-span remains open while chunks are yielded and stores their concatenated text
-as its final output.
+span and a nested platform stream span remain open while chunks are yielded;
+both store the concatenated text as their final output.
 
 ## Capture boundary
 
@@ -73,8 +73,11 @@ exact API style before treating child-span coverage as a compliance guarantee.
 The platform treats tracing as mandatory. If an installed provider's pinned
 MLflow integration cannot initialize, readiness fails instead of silently
 shipping only partial traces. CI resolves the pinned Linux dependencies, and
-the deployed smoke test requires a provider span whose parent is the platform
-root span.
+the deployed smoke test requires a nested platform span on the streaming trace.
+A separate non-streaming probe requires a provider span whose parent is the
+platform root. The split is intentional: MLflow 3.14 records every platform
+streaming boundary, while provider SDK streaming instrumentation remains
+integration-specific.
 
 ## Outside Databricks
 

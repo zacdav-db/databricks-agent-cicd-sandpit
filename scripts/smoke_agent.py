@@ -64,11 +64,31 @@ def main() -> None:
     )
     if not result.get("output") or not result.get("trace_id"):
         raise RuntimeError(f"{app_name} returned an invalid result: {result}")
-    trace_counts = _wait_for_trace(
+    streaming_trace_counts = _wait_for_trace(
         client,
         args.warehouse_id,
         trace_table,
         result["trace_id"],
+        root_span_name=f"generated_agent.{args.agent}",
+    )
+    instrumentation_result = _api_json(
+        client,
+        "POST",
+        f"{app_url}/api/invocations",
+        body={"input": "Reply briefly to confirm provider tracing is healthy."},
+    )
+    if not instrumentation_result.get("output") or not instrumentation_result.get(
+        "trace_id",
+    ):
+        raise RuntimeError(
+            f"{app_name} returned an invalid instrumentation result: "
+            f"{instrumentation_result}",
+        )
+    instrumentation_trace_counts = _wait_for_trace(
+        client,
+        args.warehouse_id,
+        trace_table,
+        instrumentation_result["trace_id"],
         root_span_name=f"generated_agent.{args.agent}",
     )
     print(
@@ -80,7 +100,9 @@ def main() -> None:
                 "stream_delta_count": result["delta_count"],
                 "output": result["output"],
                 "trace_id": result["trace_id"],
-                "trace_span_counts": trace_counts,
+                "stream_trace_span_counts": streaming_trace_counts,
+                "instrumentation_trace_id": instrumentation_result["trace_id"],
+                "instrumentation_trace_span_counts": instrumentation_trace_counts,
                 "trace_table": trace_table,
             },
             sort_keys=True,
