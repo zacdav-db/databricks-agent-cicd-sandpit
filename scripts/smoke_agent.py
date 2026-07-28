@@ -65,11 +65,12 @@ def main() -> None:
     )
     if not result.get("output") or not result.get("trace_id"):
         raise RuntimeError(f"{app_name} returned an invalid result: {result}")
-    _wait_for_trace(
+    trace_counts = _wait_for_trace(
         client,
         args.warehouse_id,
         trace_table,
         result["trace_id"],
+        root_span_name=f"generated_agent.{args.agent}",
     )
     print(
         json.dumps(
@@ -79,6 +80,7 @@ def main() -> None:
                 "gateway_registration_verified": True,
                 "output": result["output"],
                 "trace_id": result["trace_id"],
+                "trace_span_counts": trace_counts,
                 "trace_table": trace_table,
             },
             sort_keys=True,

@@ -11,6 +11,8 @@ implementation detail behind its three architecture views.
   target isolation, authentication, and the deployment runner.
 - [Folder-defined agents](architecture/folder-defined-agents.md): the minimal
   author contract, generated runtime, validation rules, and design boundaries.
+- [Platform-owned tracing](architecture/platform-tracing.md): pre-import
+  instrumentation, capture boundaries, and an externally hosted agent.
 
 ## Operations
 

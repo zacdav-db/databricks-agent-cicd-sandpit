@@ -53,6 +53,11 @@ approved
 [Foundation Model API](https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis)
 endpoint as `MODEL_ENDPOINT`.
 
+The generated runtime also enables supported MLflow provider integrations
+before it imports the author module, so model calls become child spans without
+an author-side tracing dependency. See
+[platform-owned tracing](docs/architecture/platform-tracing.md).
+
 After completing the
 [local setup](docs/operations/deployment.md#setup), run the contract checks:
 
@@ -201,6 +206,7 @@ the deployment unless the App connection, base path, `EXECUTE`, and
 | --- | --- |
 | [`agents/`](agents) | Minimal author-owned agent folders. |
 | [`agent_platform/`](agent_platform) | Platform model policy and injected App runtime. |
+| [`examples/external-agent/`](examples/external-agent) | The same platform tracing boundary on compute hosted outside Databricks. |
 | [`scripts/compose_agents.py`](scripts/compose_agents.py) | Strict contract validation and deterministic DAB composition. |
 | [`src/`](src) | LangChain, custom MCP, and Omnigent implementations, each with its own DAB. |
 | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) | Quality, promotion, and deployment workflow. |
@@ -212,3 +218,4 @@ the deployment unless the App connection, base path, `EXECUTE`, and
 - [Runtime example](docs/architecture/runtime-example.md)
 - [CI/CD flow](docs/architecture/cicd.md)
 - [Folder-defined agents](docs/architecture/folder-defined-agents.md)
+- [Platform-owned tracing and external hosting](docs/architecture/platform-tracing.md)

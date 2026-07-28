@@ -15,6 +15,8 @@ import mlflow
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from _platform_tracing import configure_tracing
+
 logger = logging.getLogger(__name__)
 Invoker = Callable[[str], str | Awaitable[str]]
 INVOCATION_TIMEOUT_SECONDS = 120.0
@@ -63,16 +65,6 @@ def _invoker() -> Invoker:
     return candidate
 
 
-@lru_cache(maxsize=1)
-def _configure_tracing() -> None:
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "databricks"))
-    mlflow.set_experiment(experiment_id=os.environ["MLFLOW_EXPERIMENT_ID"])
-    try:
-        mlflow.langchain.autolog()
-    except (AttributeError, ImportError):
-        logger.info("LangChain autologging is not installed for this agent.")
-
-
 app = FastAPI(
     title=os.getenv("AGENT_NAME", "Generated agent"),
     version="1.0.0",
@@ -91,6 +83,7 @@ def root() -> dict[str, str]:
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
+    configure_tracing()
     _invoker()
     return {"status": "ok"}
 
@@ -98,7 +91,7 @@ def health() -> dict[str, str]:
 @app.post("/api/invocations", response_model=InvocationResponse)
 async def invoke(request: InvocationRequest) -> InvocationResponse:
     try:
-        _configure_tracing()
+        configure_tracing()
         with mlflow.start_span(
             name=f"generated_agent.{os.environ['AGENT_NAME']}",
             span_type="CHAIN",
