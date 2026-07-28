@@ -19,6 +19,7 @@ DEPLOYMENT_PLATFORM_PATHS = (
     "scripts/register_uc_agent.py",
     "scripts/smoke_agent.py",
     "scripts/smoke_runtime_app.py",
+    "scripts/smoke_test.py",
 )
 RUNTIME_APP_PATHS = {
     "mcp": ("src/mcp_server/",),
