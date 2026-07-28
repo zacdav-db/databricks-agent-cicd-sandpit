@@ -45,6 +45,8 @@ pytest
 ```
 
 This is a trusted-contributor contract, not a Python sandbox. Every change
-must still pass review before it reaches the protected `dev` branch.
-Removing or renaming a folder is a destructive App change and requires
-platform-owner review.
+must pass pull-request quality checks before it reaches the protected `dev`
+branch. CODEOWNERS requests platform review, but independent approval remains
+advisory while this sandpit has only one collaborator.
+Removing or renaming a folder is a destructive App change and is blocked in
+v1.
