@@ -48,7 +48,10 @@ The deployment is idempotent. It:
 3. Creates or updates the target schema, functions, experiment, and trace
    tables.
 4. Validates and deploys each selected DAB.
-5. Starts, registers, and smoke-tests only each selected unit.
+5. Starts each selected unit.
+6. Registers every selected agent App in Unity AI Gateway and verifies its
+   Agent Service, connection, base path, and required grants.
+7. Invokes and trace-smoke-tests only each selected unit.
 
 Local deployment selects every unit. CI instead supplies the push's base and
 head commits, so an agent-only change deploys only that agent.
