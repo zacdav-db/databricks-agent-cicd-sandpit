@@ -1,5 +1,5 @@
-"""Deployment-owned Python startup hook; the author module stays unchanged."""
+"""Patch provider SDKs at Python startup; the author module stays unchanged."""
 
-from _platform_tracing import configure_tracing
+from _platform_tracing import configure_autologging
 
-configure_tracing()
+configure_autologging()

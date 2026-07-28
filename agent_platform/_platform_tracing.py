@@ -47,11 +47,8 @@ def _select_experiment() -> None:
 
 
 @lru_cache(maxsize=1)
-def configure_tracing() -> tuple[str, ...]:
-    """Configure the trace destination and every installed SDK integration."""
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "databricks"))
-    _select_experiment()
-
+def configure_autologging() -> tuple[str, ...]:
+    """Patch every installed provider before the author module is imported."""
     enabled: list[str] = []
     for provider_module, integration_module in AUTOTRACE_INTEGRATIONS:
         if not _is_installed(provider_module):
@@ -71,3 +68,11 @@ def configure_tracing() -> tuple[str, ...]:
         enabled or "none",
     )
     return tuple(enabled)
+
+
+@lru_cache(maxsize=1)
+def configure_tracing() -> tuple[str, ...]:
+    """Configure the trace destination and installed SDK integrations."""
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "databricks"))
+    _select_experiment()
+    return configure_autologging()
