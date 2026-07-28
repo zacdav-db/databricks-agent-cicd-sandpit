@@ -15,6 +15,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  select-deployments:
+    name: Select changed deployment units
+    runs-on: ubuntu-latest
+    outputs:
+      deployable: ${{ steps.select.outputs.deployable }}
+      selection: ${{ steps.select.outputs.selection }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Map changed paths to isolated deployment units
+        id: select
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          selection="$(
+            python scripts/select_deployments.py \
+              --base "${BASE_SHA}" \
+              --head "${HEAD_SHA}"
+          )"
+          echo "selection=${selection}" >> "${GITHUB_OUTPUT}"
+          if [[ "$(jq -r '.apps + .agents | length' <<<"${selection}")" -gt 0 ]]; then
+            echo "deployable=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "deployable=false" >> "${GITHUB_OUTPUT}"
+          fi
+          echo "Selected deployments: \`${selection}\`" >> "${GITHUB_STEP_SUMMARY}"
+
   promotion-source:
     name: Promotion source is repository dev
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
@@ -111,8 +140,10 @@ jobs:
 
   package-deployment:
     name: Package deployment dependencies
-    if: github.event_name == 'push'
-    needs: test
+    if: >-
+      github.event_name == 'push' &&
+      needs.select-deployments.outputs.deployable == 'true'
+    needs: [select-deployments, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -139,8 +170,11 @@ jobs:
 
   deploy-dev:
     name: Deploy development
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
-    needs: [test, package-deployment]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/dev' &&
+      needs.select-deployments.outputs.deployable == 'true'
+    needs: [select-deployments, test, package-deployment]
     # The workspace IP ACL rejects ephemeral GitHub-hosted addresses.
     runs-on: [self-hosted, macOS, ARM64, sandpit-deploy]
     environment: production
@@ -180,8 +214,15 @@ jobs:
 
   deploy-prod:
     name: Deploy production
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, package-deployment, production-promotion]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.select-deployments.outputs.deployable == 'true'
+    needs:
+      - select-deployments
+      - test
+      - package-deployment
+      - production-promotion
     runs-on: [self-hosted, macOS, ARM64, sandpit-deploy]
     environment: production
     env:
