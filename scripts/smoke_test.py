@@ -210,17 +210,24 @@ def _smoke_omnigent_delegation(
         )
         session_id = str(session["id"])
 
-        hosts = _api_json(client, "GET", f"{omnigent_url}/v1/hosts")
-        host = next(
-            (
-                item
-                for item in hosts.get("hosts", [])
-                if item.get("status") == "online"
-            ),
-            None,
-        )
+        deadline = time.monotonic() + 180
+        host: dict[str, Any] | None = None
+        hosts: dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            hosts = _api_json(client, "GET", f"{omnigent_url}/v1/hosts")
+            host = next(
+                (
+                    item
+                    for item in hosts.get("hosts", [])
+                    if item.get("status") == "online"
+                ),
+                None,
+            )
+            if host is not None:
+                break
+            time.sleep(3)
         if host is None:
-            raise RuntimeError(f"Omnigent has no online host: {hosts}")
+            raise TimeoutError(f"Omnigent has no online host: {hosts}")
         host_id = str(host["host_id"])
         filesystem = _api_json(
             client,
