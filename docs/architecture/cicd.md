@@ -1,25 +1,69 @@
 # CI/CD flow
 
-GitHub Actions promotes the same repository state through development and
-production. Production can only be reached from the repository's `dev` branch.
+GitHub Actions validates changes, releases selected units to development, and
+then promotes the same reviewed repository state to production. Validation,
+deployment scope, and environment promotion are separate controls.
 
 ```mermaid
-flowchart TB
+flowchart LR
     Feature["Feature branch"]
-    DevPR["Pull request to dev"]
-    DevGate["PR + quality gate"]
-    Dev["dev branch"]
-    DevSelect{"Path selector"}
-    DevUnit["Deploy + Gateway verify + smoke changed unit only"]
-    ProdPR["Pull request: dev to main"]
-    ProdGate["Source check + quality gate"]
-    Main["main branch"]
-    ProdSelect{"Path selector"}
-    ProdUnit["Deploy + Gateway verify + smoke changed unit only"]
 
-    Feature --> DevPR --> DevGate --> Dev --> DevSelect --> DevUnit
-    Dev --> ProdPR --> ProdGate --> Main --> ProdSelect --> ProdUnit
+    subgraph PullRequest["Credential-free review"]
+        DevPR["Pull request to dev"]
+        Quality["Compose agents<br/>lint + test<br/>Linux dependency resolution"]
+    end
+
+    subgraph Dev["dev branch and namespace"]
+        DevPush["Reviewed merge"]
+        DevSelect{"Path selector"}
+        DevNoop["No deployable change<br/>stop here"]
+        DevUnit["Selected unit only<br/>DAB deploy + start"]
+        DevVerify["Gateway read-back<br/>stream + trace smoke"]
+    end
+
+    subgraph Guard["Promotion boundary"]
+        ProdPR["Pull request: dev → main"]
+        HeadCheck["Exact repository dev head"]
+        Repeat["Repeat quality gate"]
+    end
+
+    subgraph Prod["main branch and prod namespace"]
+        MainPush["Verified promotion merge"]
+        ProdSelect{"Path selector"}
+        ProdUnit["Selected unit only<br/>DAB deploy + start"]
+        ProdVerify["Gateway read-back<br/>stream + trace smoke"]
+    end
+
+    Feature --> DevPR --> Quality -->|"merge"| DevPush --> DevSelect
+    DevSelect -->|"docs or tests only"| DevNoop
+    DevSelect -->|"deployable unit"| DevUnit --> DevVerify
+    DevVerify --> ProdPR --> HeadCheck --> Repeat
+    Repeat -->|"merge reviewed state"| MainPush --> ProdSelect
+    ProdSelect --> ProdUnit --> ProdVerify
 ```
+
+The important unit of promotion is the reviewed repository state, not a
+separately rebuilt source snapshot. The `dev` and `main` deployments compose
+from their protected-branch commits and apply target-specific names, schemas,
+experiments, trace tables, Gateway objects, and DAB state.
+
+| Repository event | Workspace effect |
+| --- | --- |
+| Pull request to `dev` | Run the quality gate. Never deploy. |
+| Merge to `dev` | Deploy and verify only the units selected from that push's commit range. |
+| Pull request from `dev` to `main` | Verify the source branch and repeat the quality gate. Never deploy. |
+| Merge to `main` | Verify the merge came from the promotion PR, then deploy the selected units to `prod`. |
+
+For a selected unit, “deployed” means the complete transaction succeeds:
+
+1. Validate its independently stateful DAB.
+2. Deploy and start only that App.
+3. Register the agent and read its Unity AI Gateway configuration and grants
+   back.
+4. Exercise the streaming Responses API and confirm the trace is queryable.
+
+Failure at any step fails the environment release and prevents the workflow
+from describing the unit as promoted.
 
 ## Pull-request quality gate
 
