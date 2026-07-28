@@ -120,6 +120,11 @@ def test_agent_service_inventory_names_and_connection() -> None:
         "prod_sandpit_langchain_agent",
         "prod_sandpit_langchain_agent_connection",
     )
+    assert module._generated_inventory_names("dev", "minimal-assistant") == (
+        "dev-agent-minimal-assistant",
+        "dev_agent_minimal_assistant",
+        "dev_agent_minimal_assistant_connection",
+    )
     options = module._connection_options(
         "https://agent.example/",
         "https://workspace.example/",
@@ -299,6 +304,21 @@ def test_ci_promotes_dev_to_main_before_production() -> None:
     promotion_step = workflow["jobs"]["promotion-source"]["steps"][0]
     assert promotion_step["env"]["HEAD_BRANCH"] == "${{ github.head_ref }}"
     assert "HEAD_REPOSITORY" in promotion_step["env"]
+    quality_steps = {
+        step["name"]: step.get("run")
+        for step in workflow["jobs"]["test"]["steps"]
+        if "name" in step
+    }
+    assert quality_steps["Compose folder-defined agents"] == (
+        "python scripts/compose_agents.py"
+    )
+    assert "validate_agent_dependencies.py" in quality_steps[
+        "Resolve App dependencies for Linux and Python 3.11"
+    ]
+    assert quality_steps["Compile generated Apps with Python 3.11"] == (
+        "python -m compileall -q .generated/agents"
+    )
+    assert "Block implicit agent deletion or rename" in quality_steps
 
 
 def test_omnigent_cost_policy_asks_at_each_new_dollar() -> None:

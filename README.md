@@ -4,22 +4,25 @@ This repository is a small, working demonstration of deploying agents and
 governed tools to Databricks Apps through a Databricks Asset Bundle (now named
 a Declarative Automation Bundle, or DAB) and GitHub Actions.
 
-It deploys three app definitions per target. With both `dev` and `prod`
-active, the workspace contains six app instances:
+It deploys four app definitions per target. With both `dev` and `prod`
+active, the workspace contains eight app instances:
 
 1. `*-sandpit-langchain-agent`: a FastAPI LangChain agent using a Databricks
    Foundation Model endpoint and managed Unity Catalog function MCP servers.
 2. `*-sandpit-mcp-tools`: a custom Streamable HTTP MCP server.
 3. `*-sandpit-omnigent`: an Omnigent server that pre-registers a YAML supervisor
    wired to the first two apps and a managed Unity Catalog function MCP server.
+4. `*-agent-minimal-assistant`: the example produced from the minimal
+   folder-defined agent contract.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
     Feature["Feature branch"]
+    AgentFolder["agents/name<br/>agent.yaml · Python · requirements.txt"]
     DevPR["Pull request to dev"]
-    DevGate["Quality gate"]
+    DevGate["Quality gate<br/>validate · compose DAB · Linux resolve · test"]
     DevBranch["dev branch"]
     PromotionPR["Internal pull request<br/>dev → main"]
     PromotionGate["Quality gate<br/>verify source is repository dev"]
@@ -27,7 +30,7 @@ flowchart TB
     DevDeploy["DAB dev deployment<br/>bootstrap · deploy · smoke"]
     ProdDeploy["DAB prod deployment<br/>bootstrap · deploy · smoke"]
 
-    Feature --> DevPR --> DevGate --> DevBranch --> DevDeploy
+    AgentFolder --> Feature --> DevPR --> DevGate --> DevBranch --> DevDeploy
     DevBranch --> PromotionPR --> PromotionGate --> MainBranch --> ProdDeploy
 
     subgraph Workspace["One Databricks workspace and catalog"]
@@ -38,9 +41,10 @@ flowchart TB
             DevOmni["App 1<br/>dev-sandpit-omnigent"]
             DevMCP["App 2<br/>dev-sandpit-mcp-tools"]
             DevLC["App 3<br/>dev-sandpit-langchain-agent"]
+            DevGenerated["App 4<br/>dev-agent-minimal-assistant"]
             DevManaged["Managed Functions MCP"]
             DevFunctions["dev_estimate_project_cost<br/>dev_current_utc_timestamp"]
-            DevService["dev_sandpit_langchain_agent<br/>Agent Service + OAuth connection"]
+            DevService["Agent Services + OAuth connections<br/>fixed + folder-defined agents"]
             DevTraces[("dev_sandpit_agent_cicd<br/>OpenTelemetry trace tables")]
         end
 
@@ -48,9 +52,10 @@ flowchart TB
             ProdOmni["App 1<br/>prod-sandpit-omnigent"]
             ProdMCP["App 2<br/>prod-sandpit-mcp-tools"]
             ProdLC["App 3<br/>prod-sandpit-langchain-agent"]
+            ProdGenerated["App 4<br/>prod-agent-minimal-assistant"]
             ProdManaged["Managed Functions MCP"]
             ProdFunctions["prod_estimate_project_cost<br/>prod_current_utc_timestamp"]
-            ProdService["prod_sandpit_langchain_agent<br/>Agent Service + OAuth connection"]
+            ProdService["Agent Services + OAuth connections<br/>fixed + folder-defined agents"]
             ProdTraces[("prod_sandpit_agent_cicd<br/>OpenTelemetry trace tables")]
         end
     end
@@ -58,9 +63,11 @@ flowchart TB
     DevDeploy --> DevOmni
     DevDeploy --> DevMCP
     DevDeploy --> DevLC
+    DevDeploy --> DevGenerated
     ProdDeploy --> ProdOmni
     ProdDeploy --> ProdMCP
     ProdDeploy --> ProdLC
+    ProdDeploy --> ProdGenerated
 
     DevOmni -->|"custom tools"| DevMCP
     DevOmni -->|"UC function tool"| DevManaged
@@ -68,7 +75,9 @@ flowchart TB
     DevLC -->|"governed tools"| DevManaged
     DevManaged --> DevFunctions
     DevService -. "beta inventory" .-> DevLC
+    DevService -. "beta inventory" .-> DevGenerated
     DevLC --> DevTraces
+    DevGenerated --> DevTraces
 
     ProdOmni -->|"custom tools"| ProdMCP
     ProdOmni -->|"UC function tool"| ProdManaged
@@ -76,13 +85,81 @@ flowchart TB
     ProdLC -->|"governed tools"| ProdManaged
     ProdManaged --> ProdFunctions
     ProdService -. "beta inventory" .-> ProdLC
+    ProdService -. "beta inventory" .-> ProdGenerated
     ProdLC --> ProdTraces
+    ProdGenerated --> ProdTraces
 
     DevLC --> Model
+    DevGenerated --> Model
     ProdLC --> Model
+    ProdGenerated --> Model
     DevTraces --> Warehouse
     ProdTraces --> Warehouse
 ```
+
+## Folder-defined agent contract
+
+The new author surface is deliberately smaller than a Databricks App or DAB
+resource. A pull request adds one directory:
+
+```text
+agents/minimal-assistant/
+├── agent.yaml
+├── agent.py
+└── requirements.txt
+```
+
+The complete manifest has three fields:
+
+```yaml
+name: minimal-assistant
+model: default
+entrypoint: agent:invoke
+```
+
+The entrypoint is a synchronous or asynchronous
+`invoke(message, context) -> str` function. `context` supplies the immutable
+agent name, approved model endpoint and deployment target. The example is in
+[`agents/minimal-assistant`](agents/minimal-assistant).
+
+[`scripts/compose_agents.py`](scripts/compose_agents.py) validates every folder
+and builds `.generated/` atomically. It injects the platform FastAPI runtime and
+SDK, then emits one isolated Databricks App DAB resource per folder. Generation
+is deterministic and runs before validation in CI and before every deployment.
+[`scripts/validate_agent_dependencies.py`](scripts/validate_agent_dependencies.py)
+uses `uv` to resolve each generated requirements file specifically for the
+Databricks Linux/Python 3.11 runtime.
+
+The platform, rather than the author, owns:
+
+- HTTP and health routes, request limits and error handling.
+- MLflow tracing and target-specific Unity Catalog trace bindings.
+- App commands, names, service principals, permissions and DAB structure.
+- Model endpoints through aliases in
+  [`agent_platform/policy.yaml`](agent_platform/policy.yaml).
+- Dev/prod naming, deployment, startup and end-to-end smoke testing.
+
+The strictness is intentional. Unknown YAML fields, duplicate keys, arbitrary
+model endpoints, symlinks, unsafe requirement directives, direct URLs and
+non-exact author dependency pins fail the quality gate. Raw environment
+variables, resource bindings, permissions and DAB fragments are not part of
+the contract. Author dependencies use exact pins; the injected platform
+runtime is also exact-pinned.
+
+This is trusted reviewed Python, not a sandbox for untrusted pull requests.
+One folder creates one App identity and scaling boundary, even if its Python
+internally coordinates several logical subagents. Folder deletion or renaming
+is a destructive infrastructure change. V1 blocks it in the pull-request
+quality gate; an explicit retirement workflow should be added before removals
+are permitted. Platform-owned surfaces also require review via CODEOWNERS. A
+future capability such as tools or App dependencies should be added as a
+typed, allowlisted contract version—not by exposing raw DAB YAML.
+
+The implementation stays in this repository for v1 so the contract, runtime
+and deployment behavior change atomically. Once the interface is stable, the
+generator and `agent_sdk` are natural candidates for a separately versioned
+platform package; moving individual agents to separate repositories before
+that point would add release coordination without improving isolation.
 
 ## Unity Catalog mapping
 
@@ -94,10 +171,11 @@ provides:
   `uc_securable` bindings and call them through Databricks-managed Functions
   MCP endpoints.
 - The LangChain Apps are registered after deployment as target-specific Unity
-  Catalog Agent Services. Agent Services are currently beta inventory and
-  permission objects; the sandpit owner receives `EXECUTE` and `READ_METADATA`.
-  Runtime invocation is not yet available, so live traffic continues to use
-  the DAB-deployed App endpoint.
+  Catalog Agent Services. Every folder-defined agent is registered the same
+  way. Agent Services are currently beta inventory and permission objects; the
+  sandpit owner receives `EXECUTE` and `READ_METADATA`. Runtime invocation is
+  not yet available, so live traffic continues to use each DAB-deployed App
+  endpoint.
 - The custom MCP remains a stateless DAB App. Databricks currently treats
   custom MCP servers hosted in Apps separately from Unity Catalog MCP Services
   and explicitly does not support registering an App as an MCP Service.
@@ -183,6 +261,8 @@ uv pip install --python .venv/bin/python \
   -r requirements-ci.txt \
   -r src/langchain_agent/requirements.txt \
   -r src/mcp_server/requirements.txt
+python scripts/compose_agents.py
+python scripts/validate_agent_dependencies.py
 ```
 
 Deploy and run all checks:
@@ -202,7 +282,7 @@ uses a pinned `uv` release and its dependency cache for fast, reproducible
 environment creation:
 
 1. A feature pull request targets `dev` and must pass the quality gate.
-2. A push to `dev` bootstraps only `dev_agent_cicd`, deploys only the three
+2. A push to `dev` bootstraps only `dev_agent_cicd`, deploys the four current
    `dev-` Apps, reconciles the dev Agent Service, and runs the full smoke test.
 3. Production requires an internal pull request from the repository's `dev`
    branch to `main`. A dedicated check rejects every other source branch,
@@ -265,6 +345,7 @@ databricks bundle run smoke_test -t dev --var experiment_id=<id>
 databricks apps logs dev-sandpit-langchain-agent -p sandpit
 databricks apps logs dev-sandpit-mcp-tools -p sandpit
 databricks apps logs dev-sandpit-omnigent -p sandpit
+databricks apps logs dev-agent-minimal-assistant -p sandpit
 ```
 
 ## Main source files
@@ -272,6 +353,10 @@ databricks apps logs dev-sandpit-omnigent -p sandpit
 - [`databricks.yml`](databricks.yml): bundle variables and targets.
 - [`resources/apps.yml`](resources/apps.yml): the three app resources and
   least-privilege bindings.
+- [`agents/`](agents): minimal author-owned agent folders.
+- [`agent_platform/`](agent_platform): model policy and injected App runtime.
+- [`scripts/compose_agents.py`](scripts/compose_agents.py): strict contract
+  validation and deterministic DAB composition.
 - [`src/langchain_agent/agent.py`](src/langchain_agent/agent.py): LangChain and
   MLflow tracing.
 - [`src/mcp_server/server.py`](src/mcp_server/server.py): custom MCP tools.

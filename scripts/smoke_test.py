@@ -7,6 +7,7 @@ import json
 import os
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from databricks.sdk import WorkspaceClient
@@ -94,6 +95,34 @@ def _execute(client: WorkspaceClient, warehouse_id: str, statement: str) -> dict
     return response
 
 
+def _wait_for_trace(
+    client: WorkspaceClient,
+    warehouse_id: str,
+    trace_table: str,
+    raw_trace_id: str,
+    timeout: int = 180,
+) -> None:
+    trace_id = raw_trace_id.rsplit("/", maxsplit=1)[-1]
+    if not trace_id.isalnum():
+        raise RuntimeError(f"Unexpected trace ID format: {trace_id}")
+    deadline = time.monotonic() + timeout
+    trace_result: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        trace_result = _execute(
+            client,
+            warehouse_id,
+            (
+                f"SELECT COUNT(*) AS trace_rows FROM {trace_table} "
+                f"WHERE trace_id = '{trace_id}'"
+            ),
+        )
+        rows = trace_result.get("result", {}).get("data_array", [])
+        if rows and int(rows[0][0]) > 0:
+            return
+        time.sleep(10)
+    raise RuntimeError(f"No trace rows appeared in {trace_table}: {trace_result}")
+
+
 def _mcp_request(
     client: WorkspaceClient,
     server_url: str,
@@ -146,11 +175,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trace-table")
     parser.add_argument("--uc-function")
     parser.add_argument("--uc-time-function")
+    parser.add_argument(
+        "--agent-index",
+        type=Path,
+        default=Path(".generated/agent-index.json"),
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    generated_index = json.loads(args.agent_index.read_text(encoding="utf-8"))
+    generated_definitions = generated_index.get("agents", [])
+    if not isinstance(generated_definitions, list):
+        raise RuntimeError(f"Invalid generated agent index: {args.agent_index}")
     catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
     schema = os.getenv("UC_SCHEMA", f"{args.target}_agent_cicd")
     trace_prefix = os.getenv(
@@ -178,7 +216,16 @@ def main() -> None:
     mcp_url = _wait_for_app(client, f"{prefix}-sandpit-mcp-tools")
     agent_url = _wait_for_app(client, f"{prefix}-sandpit-langchain-agent")
     omnigent_url = _wait_for_app(client, f"{prefix}-sandpit-omnigent")
-    _progress("All three Databricks Apps report RUNNING.")
+    generated_urls = {
+        definition["name"]: _wait_for_app(
+            client,
+            f"{prefix}-agent-{definition['name']}",
+        )
+        for definition in generated_definitions
+    }
+    _progress(
+        f"All {3 + len(generated_urls)} Databricks Apps report RUNNING.",
+    )
 
     _api_json(client, "GET", f"{agent_url}/api/health")
 
@@ -334,29 +381,64 @@ def main() -> None:
         raise RuntimeError(f"Unexpected UC Agent Service: {agent_service}")
     if agent_service.get("config", {}).get("base_path") != "/api/invocations":
         raise RuntimeError(f"Unexpected Agent Service base path: {agent_service}")
-    _progress("The LangChain App is discoverable as a Unity Catalog Agent Service.")
-
-    trace_id = invocation_payload["trace_id"].rsplit("/", maxsplit=1)[-1]
-    if not trace_id.isalnum():
-        raise RuntimeError(f"Unexpected trace ID format: {trace_id}")
-    deadline = time.monotonic() + 180
-    trace_result: dict[str, Any] | None = None
-    while time.monotonic() < deadline:
-        trace_result = _execute(
+    generated_agent_services: list[str] = []
+    for definition in generated_definitions:
+        generated_service_name = (
+            f"{args.uc_function.rsplit('.', maxsplit=1)[0]}."
+            f"{prefix}_agent_{definition['name'].replace('-', '_')}"
+        )
+        generated_service = _api_json(
             client,
-            args.warehouse_id,
+            "GET",
             (
-                f"SELECT COUNT(*) AS trace_rows FROM {args.trace_table} "
-                f"WHERE trace_id = '{trace_id}'"
+                f"{client.config.host.rstrip('/')}/api/2.1/unity-catalog/"
+                f"agent-services/{generated_service_name}"
             ),
         )
-        rows = trace_result.get("result", {}).get("data_array", [])
-        if rows and int(rows[0][0]) > 0:
-            break
-        time.sleep(10)
-    else:
-        raise RuntimeError(f"No trace rows appeared in {args.trace_table}: {trace_result}")
+        if (
+            generated_service.get("name", "").removeprefix("agent-services/")
+            != generated_service_name
+            or generated_service.get("config", {}).get("base_path")
+            != "/api/invocations"
+        ):
+            raise RuntimeError(
+                f"Unexpected generated Agent Service: {generated_service}",
+            )
+        generated_agent_services.append(generated_service_name)
+    _progress(
+        "The LangChain and folder-defined Apps are discoverable as "
+        "Unity Catalog Agent Services.",
+    )
+
+    _wait_for_trace(
+        client,
+        args.warehouse_id,
+        args.trace_table,
+        invocation_payload["trace_id"],
+    )
     _progress("The LangChain trace is queryable in the Unity Catalog spans table.")
+
+    generated_results: dict[str, dict[str, Any]] = {}
+    for name, generated_url in generated_urls.items():
+        _api_json(client, "GET", f"{generated_url}/api/health")
+        result = _api_json(
+            client,
+            "POST",
+            f"{generated_url}/api/invocations",
+            body={"input": "Reply briefly to confirm this folder-defined agent is healthy."},
+        )
+        if not result.get("output") or not result.get("trace_id"):
+            raise RuntimeError(f"Generated agent {name} returned an invalid result: {result}")
+        _wait_for_trace(
+            client,
+            args.warehouse_id,
+            args.trace_table,
+            result["trace_id"],
+        )
+        generated_results[name] = result
+    _progress(
+        f"Validated {len(generated_results)} folder-defined agent contract(s) and traces.",
+    )
 
     _api_json(client, "GET", f"{omnigent_url}/health")
 
@@ -395,6 +477,8 @@ def main() -> None:
             {
                 "agent": invocation_payload,
                 "agent_service": agent_service_name,
+                "generated_agent_services": generated_agent_services,
+                "generated_agents": generated_results,
                 "managed_mcp_functions": managed_results,
                 "mcp_tool_count": len(tool_names),
                 "mcp_uppercase": mcp_result,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from databricks.sdk import WorkspaceClient
@@ -17,6 +18,13 @@ def _inventory_names(target: str) -> tuple[str, str, str]:
         raise ValueError("Target must be dev or prod.")
     stem = f"{target}_sandpit_langchain_agent"
     return f"{target}-sandpit-langchain-agent", stem, f"{stem}_connection"
+
+
+def _generated_inventory_names(target: str, name: str) -> tuple[str, str, str]:
+    if target not in {"dev", "prod"}:
+        raise ValueError("Target must be dev or prod.")
+    stem = f"{target}_agent_{name.replace('-', '_')}"
+    return f"{target}-agent-{name}", stem, f"{stem}_connection"
 
 
 def _connection_options(
@@ -77,8 +85,8 @@ def _upsert_connection(
             parent=f"schemas/{catalog}.{schema}",
             connection_type=ConnectionType.HTTP,
             comment=(
-                "DAB-managed OAuth connection to the sandpit LangChain Agent App. "
-                "Used by the Unity Catalog Agent Service beta."
+                "DAB-managed OAuth connection to a sandpit Agent App. Used by "
+                "the Unity Catalog Agent Service beta."
             ),
             options=options,
         )
@@ -103,15 +111,15 @@ def _upsert_agent_service(
     except NotFound:
         existing = None
     comment = (
-        f"LangChain delivery-planning agent deployed by DAB target {target}. "
+        f"Agent App deployed by DAB target {target}. "
         "Agent Service is discovery metadata while beta runtime invocation is unavailable."
     )
     config = {
         "connection": {"name": f"connections/{connection_full_name}"},
         "base_path": "/api/invocations",
         "system_prompt": (
-            "You are a concise delivery-planning assistant using governed "
-            "Unity Catalog function tools."
+            "You are a concise assistant. Use only the resources granted to "
+            "your Databricks App identity."
         ),
     }
     if existing is None:
@@ -180,6 +188,11 @@ def parse_args() -> argparse.Namespace:
         "--metadata-principal",
         default="zachary.davies@databricks.com",
     )
+    parser.add_argument(
+        "--agent-index",
+        type=Path,
+        default=Path(".generated/agent-index.json"),
+    )
     parser.add_argument("--profile")
     return parser.parse_args()
 
@@ -187,40 +200,52 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     schema = args.schema or f"{args.target}_agent_cicd"
-    app_name, service_name, connection_name = _inventory_names(args.target)
     workspace_client = (
         WorkspaceClient(profile=args.profile) if args.profile else WorkspaceClient()
     )
-    app = workspace_client.apps.get(name=app_name)
-    if not app.url:
-        raise RuntimeError(f"Databricks App {app_name} does not have a URL.")
+    generated_index = json.loads(args.agent_index.read_text(encoding="utf-8"))
+    inventories = [_inventory_names(args.target)]
+    inventories.extend(
+        _generated_inventory_names(args.target, agent["name"])
+        for agent in generated_index["agents"]
+    )
+    registered: list[dict[str, str]] = []
+    for app_name, service_name, connection_name in inventories:
+        app = workspace_client.apps.get(name=app_name)
+        if not app.url:
+            raise RuntimeError(f"Databricks App {app_name} does not have a URL.")
 
-    connection_full_name = _upsert_connection(
-        workspace_client,
-        catalog=args.catalog,
-        schema=schema,
-        connection_name=connection_name,
-        app_url=app.url,
-    )
-    agent_service_full_name = _upsert_agent_service(
-        workspace_client,
-        catalog=args.catalog,
-        schema=schema,
-        service_name=service_name,
-        connection_full_name=connection_full_name,
-        target=args.target,
-    )
-    _grant_metadata(
-        workspace_client,
-        agent_service_full_name,
-        args.metadata_principal,
-    )
-    print(
-        json.dumps(
+        connection_full_name = _upsert_connection(
+            workspace_client,
+            catalog=args.catalog,
+            schema=schema,
+            connection_name=connection_name,
+            app_url=app.url,
+        )
+        agent_service_full_name = _upsert_agent_service(
+            workspace_client,
+            catalog=args.catalog,
+            schema=schema,
+            service_name=service_name,
+            connection_full_name=connection_full_name,
+            target=args.target,
+        )
+        _grant_metadata(
+            workspace_client,
+            agent_service_full_name,
+            args.metadata_principal,
+        )
+        registered.append(
             {
                 "agent_service": agent_service_full_name,
                 "app": app_name,
                 "connection": connection_full_name,
+            },
+        )
+    print(
+        json.dumps(
+            {
+                "agent_services": registered,
                 "runtime_invocation_available": False,
             },
             sort_keys=True,
