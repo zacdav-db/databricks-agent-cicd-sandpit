@@ -31,17 +31,17 @@ if [[ -n "${legacy_id}" ]]; then
   )
 fi
 
-existing_app_id="$(
+existing_app_name="$(
   databricks apps get "${app_name}" -o json 2>/dev/null |
-    jq -r '.id // empty' || true
+    jq -r '.name // empty' || true
 )"
-if [[ -z "${isolated_id}" && -n "${existing_app_id}" ]]; then
+if [[ -z "${isolated_id}" && -n "${existing_app_name}" ]]; then
   printf 'Binding existing %s to its isolated bundle state\n' "${app_name}"
   (
     cd "${bundle_dir}"
     databricks bundle deployment bind \
       "${resource_key}" \
-      "${existing_app_id}" \
+      "${existing_app_name}" \
       "${bundle_args[@]}" \
       --auto-approve \
       --force-lock

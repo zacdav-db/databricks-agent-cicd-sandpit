@@ -10,7 +10,15 @@ from pathlib import Path
 AGENT_PLATFORM_PATHS = (
     "agent_platform/",
     "scripts/compose_agents.py",
+)
+DEPLOYMENT_PLATFORM_PATHS = (
     "scripts/deploy_agent.sh",
+    "scripts/deploy_runtime_app.sh",
+    "scripts/deploy_target.sh",
+    "scripts/migrate_app_bundle.sh",
+    "scripts/register_uc_agent.py",
+    "scripts/smoke_agent.py",
+    "scripts/smoke_runtime_app.py",
 )
 RUNTIME_APP_PATHS = {
     "langchain": ("src/langchain_agent/",),
@@ -32,7 +40,11 @@ def select_deployments(
 ) -> dict[str, object]:
     """Map changed repository paths to isolated deployment units."""
     known_agents = set(agent_names)
-    deploy_all_agents = any(
+    deploy_all_units = any(
+        _matches(path, DEPLOYMENT_PLATFORM_PATHS)
+        for path in changed_paths
+    )
+    deploy_all_agents = deploy_all_units or any(
         _matches(path, AGENT_PLATFORM_PATHS)
         for path in changed_paths
     )
@@ -43,10 +55,14 @@ def select_deployments(
         and parts[0] == "agents"
         and parts[1] in known_agents
     }
-    selected_apps = sorted(
-        app
-        for app, prefixes in RUNTIME_APP_PATHS.items()
-        if any(_matches(path, prefixes) for path in changed_paths)
+    selected_apps = (
+        sorted(RUNTIME_APP_PATHS)
+        if deploy_all_units
+        else sorted(
+            app
+            for app, prefixes in RUNTIME_APP_PATHS.items()
+            if any(_matches(path, prefixes) for path in changed_paths)
+        )
     )
     return {
         "apps": selected_apps,
