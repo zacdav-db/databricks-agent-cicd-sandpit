@@ -177,7 +177,7 @@ Each target currently has seven App definitions:
 | App | Role |
 | --- | --- |
 | `*-sandpit-langchain-agent` | LangChain agent with [managed Unity Catalog function tools](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp#unity-catalog-functions) and MLflow tracing. |
-| `*-sandpit-mcp-tools` | Custom [Model Context Protocol (MCP)](https://docs.databricks.com/aws/en/agents/mcp/) server. |
+| `mcp-*-sandpit-tools` | Custom [Model Context Protocol (MCP)](https://docs.databricks.com/aws/en/agents/mcp/custom-mcp) server, named with the required `mcp-` prefix for AI Playground discovery. |
 | `*-sandpit-omnigent` | Policy-controlled [Omnigent](https://docs.databricks.com/aws/en/omnigent/) supervisor. |
 | `*-agent-langchain-assistant` | Folder agent using LangChain `ChatDatabricks`. |
 | `*-agent-gemini-assistant` | Folder agent using the native Google Gen AI SDK. |

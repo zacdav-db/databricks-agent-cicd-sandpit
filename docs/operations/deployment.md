@@ -52,6 +52,8 @@ The deployment is idempotent. It:
 6. Registers every selected agent App in Unity AI Gateway and verifies its
    Agent Service, connection, base path, and required grants.
 7. Invokes and trace-smoke-tests only each selected unit.
+8. After a prefixed MCP replacement and its Omnigent dependency both pass
+   smoke tests, retires the exact legacy non-prefixed MCP App if it exists.
 
 Local deployment selects every unit. CI instead supplies the push's base and
 head commits, so an agent-only change deploys only that agent.
@@ -70,7 +72,7 @@ databricks bundle validate -t dev
 databricks bundle deploy -t dev
 
 databricks apps logs dev-sandpit-langchain-agent -p sandpit
-databricks apps logs dev-sandpit-mcp-tools -p sandpit
+databricks apps logs mcp-dev-sandpit-tools -p sandpit
 databricks apps logs dev-sandpit-omnigent -p sandpit
 databricks apps logs dev-agent-langchain-assistant -p sandpit
 ```
