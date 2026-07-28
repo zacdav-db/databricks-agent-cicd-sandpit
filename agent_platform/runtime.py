@@ -15,11 +15,9 @@ import anyio
 import mlflow
 from _platform_tracing import configure_tracing
 from fastapi import HTTPException, Request
-from mlflow.genai.agent_server import (
-    AgentServer,
-    invoke as agent_invoke,
-    stream as agent_stream,
-)
+from mlflow.genai.agent_server import AgentServer
+from mlflow.genai.agent_server import invoke as agent_invoke
+from mlflow.genai.agent_server import stream as agent_stream
 from mlflow.types.responses import (
     ResponsesAgentRequest,
     ResponsesAgentResponse,
