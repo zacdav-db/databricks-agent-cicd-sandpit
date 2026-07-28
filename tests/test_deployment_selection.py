@@ -54,6 +54,16 @@ def test_runtime_app_change_selects_only_that_app() -> None:
     }
 
 
+def test_deployment_platform_change_selects_every_unit() -> None:
+    assert select_deployments(
+        ["scripts/migrate_app_bundle.sh"],
+        AGENTS,
+    ) == {
+        "apps": ["langchain", "mcp", "omnigent"],
+        "agents": AGENTS,
+    }
+
+
 def test_docs_and_tests_do_not_trigger_deployment() -> None:
     assert select_deployments(
         ["README.md", "tests/test_deployment_selection.py"],
