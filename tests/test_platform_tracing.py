@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import importlib.util
 import sys
 from pathlib import Path
@@ -182,6 +183,68 @@ def test_health_configures_tracing_before_author_import(monkeypatch) -> None:
 
     assert runtime.health() == {"status": "ok"}
     assert calls == ["configure", "author_import"]
+    assert "/responses" in {route.path for route in runtime.app.routes}
+
+    async def invoke_stream(message: str):
+        yield f"{message} "
+        yield "streamed"
+
+    monkeypatch.setattr(
+        runtime.importlib,
+        "import_module",
+        lambda _name: SimpleNamespace(
+            invoke=lambda message: message,
+            invoke_stream=invoke_stream,
+        ),
+    )
+    runtime._author_module.cache_clear()
+    runtime._invoker.cache_clear()
+    runtime._streamer.cache_clear()
+
+    async def collect() -> list[str]:
+        return [chunk async for chunk in runtime._author_chunks("response")]
+
+    assert asyncio.run(collect()) == ["response ", "streamed"]
+
+    spans: list[SimpleNamespace] = []
+
+    class FakeSpan:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.outputs: dict[str, str] | None = None
+
+        def __enter__(self):
+            spans.append(self)
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def set_inputs(self, _inputs: dict[str, str]) -> None:
+            return None
+
+        def set_outputs(self, outputs: dict[str, str]) -> None:
+            self.outputs = outputs
+
+    monkeypatch.setenv("AGENT_NAME", "test-agent")
+    monkeypatch.setattr(
+        runtime.mlflow,
+        "start_span",
+        lambda *, name, **_kwargs: FakeSpan(name),
+    )
+
+    async def collect_traced() -> list[str]:
+        return [chunk async for chunk in runtime._stream_with_trace("response")]
+
+    assert asyncio.run(collect_traced()) == ["response ", "streamed"]
+    assert [span.name for span in spans] == [
+        "generated_agent.test-agent",
+        "generated_agent.test-agent.stream",
+    ]
+    assert [span.outputs for span in spans] == [
+        {"output": "response streamed"},
+        {"output": "response streamed"},
+    ]
 
 
 def test_external_author_has_no_platform_tracing_dependency() -> None:

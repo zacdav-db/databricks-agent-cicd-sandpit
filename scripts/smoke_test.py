@@ -38,6 +38,90 @@ def _api_json(
     return payload
 
 
+def _responses_stream(
+    client: WorkspaceClient,
+    url: str,
+    message: str,
+) -> dict[str, Any]:
+    """Call the standard Responses API and validate its SSE lifecycle."""
+    response = client.api_client.do(
+        "POST",
+        url=f"{url.rstrip('/')}/responses",
+        body={
+            "input": [{"role": "user", "content": message}],
+            "stream": True,
+        },
+        headers={
+            "Accept": "text/event-stream",
+            "x-mlflow-return-trace-id": "true",
+        },
+        raw=True,
+        response_headers=["Content-Type"],
+    )
+    if not isinstance(response, dict) or "contents" not in response:
+        raise RuntimeError("Responses streaming request returned no response body.")
+    content_type = response.get("Content-Type") or ""
+    if "text/event-stream" not in content_type:
+        raise RuntimeError(f"Responses API did not return SSE: {content_type!r}")
+    with response["contents"] as contents:
+        response_text = contents.read().decode("utf-8")
+
+    raw_events = [
+        line.removeprefix("data:").strip()
+        for line in response_text.splitlines()
+        if line.startswith("data:")
+    ]
+    if not raw_events or raw_events[-1] != "[DONE]":
+        raise RuntimeError("Responses stream did not end with the [DONE] sentinel.")
+    events = [json.loads(value) for value in raw_events if value != "[DONE]"]
+    error = next((event.get("error") for event in events if event.get("error")), None)
+    if error:
+        raise RuntimeError(f"Responses stream returned an error: {error}")
+
+    deltas = [
+        event["delta"]
+        for event in events
+        if event.get("type") == "response.output_text.delta"
+    ]
+    done = next(
+        (
+            event
+            for event in events
+            if event.get("type") == "response.output_item.done"
+        ),
+        None,
+    )
+    trace_id = next(
+        (
+            event.get("trace_id")
+            for event in events
+            if isinstance(event.get("trace_id"), str)
+        ),
+        None,
+    )
+    if len(deltas) < 2 or not done or not trace_id:
+        raise RuntimeError(
+            "Responses stream must contain multiple deltas, one completed item, "
+            "and a trace ID.",
+        )
+    output = "".join(deltas)
+    item = done.get("item") or {}
+    final_text = "".join(
+        part.get("text", "")
+        for part in item.get("content", [])
+        if part.get("type") == "output_text"
+    )
+    if not output or final_text != output:
+        raise RuntimeError(
+            "Responses stream deltas did not match its completed output item.",
+        )
+    return {
+        "delta_count": len(deltas),
+        "output": output,
+        "trace_id": trace_id,
+    }
+
+
 def _mcp_json_payloads(result: dict[str, Any]) -> list[Any]:
     payloads: list[Any] = []
     structured = result.get("structuredContent")
@@ -487,6 +571,16 @@ def main() -> None:
         )
     _progress("LangChain returned the non-inferable custom MCP identity.")
 
+    streaming_payload = _responses_stream(
+        client,
+        agent_url,
+        "Reply with one complete sentence confirming that streaming is working.",
+    )
+    _progress(
+        "LangChain returned a standard Responses API SSE stream with "
+        f"{streaming_payload['delta_count']} text deltas.",
+    )
+
     managed_results: dict[str, Any] = {}
     for request_id, (function_name, arguments) in enumerate(
         (
@@ -570,7 +664,7 @@ def main() -> None:
     )
     if agent_service.get("name", "").removeprefix("agent-services/") != agent_service_name:
         raise RuntimeError(f"Unexpected UC Agent Service: {agent_service}")
-    if agent_service.get("config", {}).get("base_path") != "/api/invocations":
+    if agent_service.get("config", {}).get("base_path") != "/responses":
         raise RuntimeError(f"Unexpected Agent Service base path: {agent_service}")
     _progress("The LangChain App is discoverable as a Unity Catalog Agent Service.")
 
@@ -586,7 +680,13 @@ def main() -> None:
         args.trace_table,
         custom_tool_payload["trace_id"],
     )
-    _progress("Both LangChain traces are queryable in the Unity Catalog spans table.")
+    _wait_for_trace(
+        client,
+        args.warehouse_id,
+        args.trace_table,
+        streaming_payload["trace_id"],
+    )
+    _progress("All LangChain traces are queryable in the Unity Catalog spans table.")
 
     _api_json(client, "GET", f"{omnigent_url}/health")
 
@@ -639,6 +739,7 @@ def main() -> None:
                 "mcp_tool_count": len(tool_names),
                 "mcp_uppercase": mcp_result,
                 "langchain_custom_mcp": custom_tool_payload,
+                "langchain_streaming": streaming_payload,
                 "omnigent_delegation": omnigent_delegation,
                 "omnigent_policies": sorted(policy_names),
                 "omnigent_supervisor": omnigent_agent["name"],

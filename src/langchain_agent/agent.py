@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import AsyncGenerator
 from functools import lru_cache
 from typing import Any
 
@@ -15,7 +16,18 @@ from databricks_langchain import (
     DatabricksMultiServerMCPClient,
 )
 from langchain.agents import create_agent
+from langchain_core.messages import AIMessageChunk
 from langchain_core.tools import StructuredTool
+
+SYSTEM_PROMPT = (
+    "You are a concise delivery-planning assistant. "
+    "Use the custom MCP tools for text transformations and diagnostics. "
+    "Always call the uppercase tool when the user asks to uppercase text. "
+    "Always call get_current_identity when the user asks for the custom "
+    "MCP identity. "
+    "Use the governed Unity Catalog tools for current time and cost estimates. "
+    "State assumptions and never invent a tool result."
+)
 
 
 def configure_tracing() -> None:
@@ -125,30 +137,62 @@ def _plain_text_tool(mcp_tool: Any) -> StructuredTool:
     )
 
 
+async def _create_tool_agent() -> Any:
+    workspace_client = WorkspaceClient()
+    mcp_client = _mcp_client(workspace_client)
+    tools = [_plain_text_tool(tool) for tool in await mcp_client.get_tools()]
+    return create_agent(
+        model=get_model(),
+        tools=tools,
+        system_prompt=SYSTEM_PROMPT,
+    )
+
+
+def _chunk_text(message: Any) -> str:
+    if not isinstance(message, AIMessageChunk):
+        return ""
+    content = message.content
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            item.get("text", "")
+            for item in content
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+        )
+    return ""
+
+
 async def invoke_agent(message: str) -> tuple[str, str]:
     """Invoke the agent and return its final text and MLflow trace ID."""
-    model = get_model()
+    configure_tracing()
     with mlflow.start_span(name="sandpit_langchain_request", span_type="CHAIN") as span:
         span.set_inputs({"message": message})
-        workspace_client = WorkspaceClient()
-        mcp_client = _mcp_client(workspace_client)
-        tools = [_plain_text_tool(tool) for tool in await mcp_client.get_tools()]
-        agent = create_agent(
-            model=model,
-            tools=tools,
-            system_prompt=(
-                "You are a concise delivery-planning assistant. "
-                "Use the custom MCP tools for text transformations and diagnostics. "
-                "Always call the uppercase tool when the user asks to uppercase text. "
-                "Always call get_current_identity when the user asks for the custom "
-                "MCP identity. "
-                "Use the governed Unity Catalog tools for current time and cost estimates. "
-                "State assumptions and never invent a tool result."
-            ),
-        )
+        agent = await _create_tool_agent()
         result = await agent.ainvoke(
             {"messages": [{"role": "user", "content": message}]},
         )
         output = _message_text(result["messages"][-1])
         span.set_outputs({"output": output})
         return output, span.trace_id
+
+
+async def stream_agent(message: str) -> AsyncGenerator[str, None]:
+    """Stream model text while preserving one trace across tools and inference."""
+    configure_tracing()
+    output: list[str] = []
+    with mlflow.start_span(name="sandpit_langchain_request", span_type="CHAIN") as span:
+        span.set_inputs({"message": message})
+        agent = await _create_tool_agent()
+        async for message_chunk, _metadata in agent.astream(
+            {"messages": [{"role": "user", "content": message}]},
+            stream_mode="messages",
+        ):
+            text = _chunk_text(message_chunk)
+            if not text:
+                continue
+            output.append(text)
+            yield text
+        if not output:
+            raise RuntimeError("LangChain returned no streamed text.")
+        span.set_outputs({"output": "".join(output)})

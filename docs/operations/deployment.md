@@ -52,9 +52,11 @@ The deployment is idempotent. It:
 5. Starts each selected unit.
 6. Registers every selected agent App in Unity AI Gateway and verifies its
    Agent Service, connection, base path, and required grants.
-7. Smoke-tests each selected unit. A runtime-App change also runs the
-   end-to-end Omnigent → LangChain → custom MCP acceptance path and verifies
-   the resulting LangChain trace, without redeploying unchanged consumers.
+7. Smoke-tests each selected agent through the streaming Responses API,
+   verifies its trace and provider child span, and checks other selected
+   units. A runtime-App change also runs the end-to-end
+   Omnigent → LangChain → custom MCP acceptance path without redeploying
+   unchanged consumers.
 8. After a prefixed MCP replacement passes its smoke test, retires the exact
    legacy non-prefixed MCP App if it exists.
 
@@ -87,6 +89,26 @@ databricks apps logs mcp-dev-sandpit-tools -p sandpit
 databricks apps logs dev-sandpit-omnigent -p sandpit
 databricks apps logs dev-agent-langchain-assistant -p sandpit
 ```
+
+Query a deployed agent with the Databricks OpenAI client:
+
+```python
+from databricks_openai import DatabricksOpenAI
+
+client = DatabricksOpenAI()
+events = client.responses.create(
+    model="apps/dev-agent-langchain-assistant",
+    input="Explain streaming in one sentence.",
+    stream=True,
+)
+for event in events:
+    if event.type == "response.output_text.delta":
+        print(event.delta, end="", flush=True)
+```
+
+See the official
+[query an agent guide](https://docs.databricks.com/aws/en/agents/agent-framework/query-agent)
+for REST, OpenAI client, and MLflow invocation options.
 
 ## Target namespaces
 

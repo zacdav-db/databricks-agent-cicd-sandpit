@@ -19,6 +19,7 @@ from smoke_test import (
     _api_json,
     _mcp_request,
     _mcp_scalar,
+    _responses_stream,
     _smoke_omnigent_delegation,
     _wait_for_app,
     _wait_for_trace,
@@ -112,11 +113,23 @@ def _smoke_langchain(
         trace_table,
         custom_result["trace_id"],
     )
+    streaming_result = _responses_stream(
+        client,
+        url,
+        "Reply with one complete sentence confirming that streaming is working.",
+    )
+    _wait_for_trace(
+        client,
+        warehouse_id,
+        trace_table,
+        streaming_result["trace_id"],
+    )
     return {
         "gateway_agent_service": gateway["agent_service"],
         "gateway_registration_verified": True,
         "custom_mcp_result": custom_result,
         "managed_mcp_result": managed_result,
+        "streaming_result": streaming_result,
         "trace_table": trace_table,
     }
 
