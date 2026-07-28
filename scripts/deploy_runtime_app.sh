@@ -45,6 +45,10 @@ if [[ "${component}" == "mcp" && "${app_name}" != mcp-* ]]; then
   echo "Custom MCP App name must start with mcp-: ${app_name}" >&2
   exit 1
 fi
+if [[ "${component}" == "langchain" && "${app_name}" != agent-* ]]; then
+  echo "ResponsesAgent App name must start with agent-: ${app_name}" >&2
+  exit 1
+fi
 
 scripts/migrate_app_bundle.sh \
   "${target}" \

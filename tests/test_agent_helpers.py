@@ -260,18 +260,44 @@ def test_responses_stream_requires_deltas_done_event_and_trace() -> None:
     }
 
 
+def test_playground_agent_contract_requires_prefix_and_responses_metadata() -> None:
+    module = _load(
+        "smoke_test_playground_contract",
+        ROOT / "scripts" / "smoke_test.py",
+    )
+
+    class FakeApiClient:
+        def do(self, method: str, **kwargs: object) -> dict[str, str]:
+            assert method == "GET"
+            assert kwargs["url"] == "https://agent.example/agent/info"
+            return {"use_case": "agent", "agent_api": "responses"}
+
+    client = SimpleNamespace(api_client=FakeApiClient())
+    assert module._assert_playground_agent(
+        client,
+        "agent-dev-example",
+        "https://agent.example/",
+    ) == {"use_case": "agent", "agent_api": "responses"}
+    with pytest.raises(RuntimeError, match="must start with agent-"):
+        module._assert_playground_agent(
+            client,
+            "dev-agent-example",
+            "https://agent.example",
+        )
+
+
 def test_agent_service_inventory_names_and_connection() -> None:
     module = _load(
         "register_uc_agent",
         ROOT / "scripts" / "register_uc_agent.py",
     )
     assert module._inventory_names("prod") == (
-        "prod-sandpit-langchain-agent",
+        "agent-prod-sandpit-langchain",
         "prod_sandpit_langchain_agent",
         "prod_sandpit_langchain_agent_connection",
     )
     assert module._generated_inventory_names("dev", "langchain-assistant") == (
-        "dev-agent-langchain-assistant",
+        "agent-dev-langchain-assistant",
         "dev_agent_langchain_assistant",
         "dev_agent_langchain_assistant_connection",
     )
@@ -497,7 +523,7 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
         assert variables["uc_time_function_name"] == defaults["time_function_name"]
 
     assert langchain_bundle["resources"]["apps"]["langchain_agent"]["name"] == (
-        "${var.resource_prefix}-sandpit-langchain-agent"
+        "agent-${var.resource_prefix}-sandpit-langchain"
     )
     mcp_bundle = yaml.safe_load(
         (ROOT / "src" / "mcp_server" / "databricks.yml").read_text(
@@ -536,7 +562,7 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
             omnigent_bundle["targets"][target]["variables"][
                 "langchain_agent_app_name"
             ]
-            == f"{target}-sandpit-langchain-agent"
+            == f"agent-{target}-sandpit-langchain"
         )
     assert langchain_resources["custom_mcp_app"]["app"] == {
         "name": "${var.custom_mcp_app_name}",

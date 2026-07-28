@@ -122,6 +122,22 @@ def _responses_stream(
     }
 
 
+def _assert_playground_agent(
+    client: WorkspaceClient,
+    app_name: str,
+    app_url: str,
+) -> dict[str, Any]:
+    """Verify the Databricks App contract used by AI Playground discovery."""
+    if not app_name.startswith("agent-"):
+        raise RuntimeError(
+            f"ResponsesAgent App name must start with agent-: {app_name}",
+        )
+    info = _api_json(client, "GET", f"{app_url.rstrip('/')}/agent/info")
+    if info.get("use_case") != "agent" or info.get("agent_api") != "responses":
+        raise RuntimeError(f"{app_name} is not a ResponsesAgent App: {info}")
+    return info
+
+
 def _mcp_json_payloads(result: dict[str, Any]) -> list[Any]:
     payloads: list[Any] = []
     structured = result.get("structuredContent")
@@ -489,7 +505,7 @@ def main() -> None:
     )
     prefix = args.target
     mcp_url = _wait_for_app(client, f"mcp-{prefix}-sandpit-tools")
-    agent_url = _wait_for_app(client, f"{prefix}-sandpit-langchain-agent")
+    agent_url = _wait_for_app(client, f"agent-{prefix}-sandpit-langchain")
     omnigent_url = _wait_for_app(client, f"{prefix}-sandpit-omnigent")
     _progress("All three runtime-example Databricks Apps report RUNNING.")
 

@@ -28,7 +28,7 @@ resource_key="$(
     '.agents[] | select(.name == $name) | .resource_key' \
     .generated/agent-index.json
 )"
-app_name="${target}-agent-${agent_name}"
+app_name="agent-${target}-${agent_name}"
 
 scripts/migrate_app_bundle.sh \
   "${target}" \

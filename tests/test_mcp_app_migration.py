@@ -1,4 +1,4 @@
-"""Tests for the guarded custom MCP App rename."""
+"""Tests for guarded App naming and replacement."""
 
 from __future__ import annotations
 
@@ -80,6 +80,11 @@ fi
     )
     environment = {
         **os.environ,
+        "UC_CATALOG": "catalog",
+        "UC_SCHEMA": "schema",
+        "UC_TRACE_TABLE_PREFIX": "traces",
+        "UC_COST_FUNCTION": "estimate_cost",
+        "UC_TIME_FUNCTION": "current_time",
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
     }
 
@@ -94,3 +99,44 @@ fi
 
     assert result.returncode != 0
     assert "Custom MCP App name must start with mcp-" in result.stderr
+
+
+def test_runtime_deployment_rejects_a_non_prefixed_agent_name(
+    tmp_path: Path,
+) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_databricks_stub(
+        fake_bin,
+        """
+if [[ "$1 $2" == "bundle summary" ]]; then
+  printf '{"resources":{"apps":{"langchain_agent":{"name":"dev-agent"}}}}\n'
+fi
+""",
+    )
+    environment = {
+        **os.environ,
+        "UC_CATALOG": "catalog",
+        "UC_SCHEMA": "schema",
+        "UC_TRACE_TABLE_PREFIX": "traces",
+        "UC_COST_FUNCTION": "estimate_cost",
+        "UC_TIME_FUNCTION": "current_time",
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+    }
+
+    result = subprocess.run(
+        [
+            ROOT / "scripts" / "deploy_runtime_app.sh",
+            "dev",
+            "langchain",
+            "experiment",
+        ],
+        cwd=ROOT,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "ResponsesAgent App name must start with agent-" in result.stderr

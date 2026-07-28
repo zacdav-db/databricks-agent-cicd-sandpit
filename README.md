@@ -68,6 +68,14 @@ at `/responses`. With `"stream": true`, clients receive standard Server-Sent
 Events as the underlying implementation produces tokens. The original
 `/api/invocations` route remains as a compatibility endpoint.
 
+ResponsesAgent App names begin with `agent-`, matching the
+[Databricks Apps agent convention](https://docs.databricks.com/aws/en/getting-started/gen-ai-llm-agent#step-3-export-your-agent).
+CI also reads `/agent/info` and requires the `responses` agent API before a
+deployment succeeds. This makes the deployed Apps directly compatible with
+[AI Playground](https://docs.databricks.com/aws/en/large-language-models/ai-playground);
+the repository does not create a registered UC model or a Model Serving
+endpoint.
+
 The generated runtime also enables supported MLflow provider integrations
 before it imports the author module, so model calls become child spans without
 an author-side tracing dependency. See
@@ -227,13 +235,13 @@ Each target currently has seven App definitions:
 
 | App | Role |
 | --- | --- |
-| `*-sandpit-langchain-agent` | Streaming LangChain agent with the custom MCP App, [managed Unity Catalog function tools](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp#unity-catalog-functions), and MLflow tracing. |
+| `agent-*-sandpit-langchain` | Playground-compatible streaming LangChain agent with the custom MCP App, [managed Unity Catalog function tools](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp#unity-catalog-functions), and MLflow tracing. |
 | `mcp-*-sandpit-tools` | Custom [Model Context Protocol (MCP)](https://docs.databricks.com/aws/en/agents/mcp/custom-mcp) server, named with the required `mcp-` prefix for AI Playground discovery. |
 | `*-sandpit-omnigent` | Policy-controlled [Omnigent](https://omnigent.ai/docs/use/custom-agents) supervisor that delegates directly to the LangChain App. |
-| `*-agent-langchain-assistant` | Folder agent using LangChain `ChatDatabricks`. |
-| `*-agent-gemini-assistant` | Folder agent using the native Google Gen AI SDK. |
-| `*-agent-claude-assistant` | Folder agent using the native Anthropic SDK. |
-| `*-agent-openai-assistant` | Folder agent using the OpenAI SDK surface. |
+| `agent-*-langchain-assistant` | Playground-compatible folder agent using LangChain `ChatDatabricks`. |
+| `agent-*-gemini-assistant` | Playground-compatible folder agent using the native Google Gen AI SDK. |
+| `agent-*-claude-assistant` | Playground-compatible folder agent using the native Anthropic SDK. |
+| `agent-*-openai-assistant` | Playground-compatible folder agent using the OpenAI SDK surface. |
 
 Dev and prod use the same sandpit workspace but have different App names,
 schemas, functions, experiments, trace tables,
@@ -245,6 +253,11 @@ Every LangChain, Omnigent, and folder-defined agent App is registered in
 DAB deploys. CI reads the Agent Service and grants back from the API and fails
 the deployment unless the App connection, base path, `EXECUTE`, and
 `READ_METADATA` match the platform contract.
+
+The fixed LangChain App and folder-defined Apps are MLflow ResponsesAgent
+Apps and therefore work in AI Playground. Omnigent remains the supervising
+application and Gateway service; it is not presented as a separate
+ResponsesAgent model.
 
 ## Repository map
 

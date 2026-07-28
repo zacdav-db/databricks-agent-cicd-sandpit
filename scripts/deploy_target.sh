@@ -20,6 +20,21 @@ databricks_app_exists() {
   return 2
 }
 
+retire_replaced_app() {
+  local replacement_app="$1"
+  local legacy_app="$2"
+  if databricks_app_exists "${legacy_app}"; then
+    databricks apps get "${replacement_app}" -o json >/dev/null
+    printf 'Retiring replaced App %s\n' "${legacy_app}"
+    databricks apps delete "${legacy_app}" --auto-approve
+  else
+    local lookup_status=$?
+    if [[ "${lookup_status}" -ne 1 ]]; then
+      return "${lookup_status}"
+    fi
+  fi
+}
+
 if [[ "${target}" != "dev" && "${target}" != "prod" ]]; then
   echo "Target must be dev or prod." >&2
   exit 1
@@ -85,16 +100,19 @@ if [[ "$(jq -r '.apps | length' <<<"${selection}")" -gt 0 ]] &&
 fi
 
 if jq -e '.apps | index("mcp") != null' <<<"${selection}" >/dev/null; then
-  replacement_app="mcp-${target}-sandpit-tools"
-  legacy_app="${target}-sandpit-mcp-tools"
-  if databricks_app_exists "${legacy_app}"; then
-    databricks apps get "${replacement_app}" -o json >/dev/null
-    printf 'Retiring replaced MCP App %s\n' "${legacy_app}"
-    databricks apps delete "${legacy_app}" --auto-approve
-  else
-    app_lookup_status=$?
-    if [[ "${app_lookup_status}" -ne 1 ]]; then
-      exit "${app_lookup_status}"
-    fi
-  fi
+  retire_replaced_app \
+    "mcp-${target}-sandpit-tools" \
+    "${target}-sandpit-mcp-tools"
 fi
+
+if jq -e '.apps | index("langchain") != null' <<<"${selection}" >/dev/null; then
+  retire_replaced_app \
+    "agent-${target}-sandpit-langchain" \
+    "${target}-sandpit-langchain-agent"
+fi
+
+while IFS= read -r agent_name; do
+  retire_replaced_app \
+    "agent-${target}-${agent_name}" \
+    "${target}-agent-${agent_name}"
+done < <(jq -r '.agents[]' <<<"${selection}")

@@ -14,7 +14,7 @@ targets:
     mode: development
     variables:
       resource_prefix: dev
-      langchain_agent_app_name: dev-sandpit-langchain-agent
+      langchain_agent_app_name: agent-dev-sandpit-langchain
     workspace:
       host: https://fevm-zacdav-sandpit.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
@@ -22,7 +22,7 @@ targets:
     mode: production
     variables:
       resource_prefix: prod
-      langchain_agent_app_name: prod-sandpit-langchain-agent
+      langchain_agent_app_name: agent-prod-sandpit-langchain
     workspace:
       host: https://fevm-zacdav-sandpit.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

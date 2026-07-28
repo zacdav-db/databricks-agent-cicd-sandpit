@@ -33,7 +33,7 @@ def _inventory_names(target: str) -> tuple[str, str, str]:
     if target not in {"dev", "prod"}:
         raise ValueError("Target must be dev or prod.")
     stem = f"{target}_sandpit_langchain_agent"
-    return f"{target}-sandpit-langchain-agent", stem, f"{stem}_connection"
+    return f"agent-{target}-sandpit-langchain", stem, f"{stem}_connection"
 
 
 def _omnigent_inventory_names(target: str) -> tuple[str, str, str]:
@@ -47,7 +47,7 @@ def _generated_inventory_names(target: str, name: str) -> tuple[str, str, str]:
     if target not in {"dev", "prod"}:
         raise ValueError("Target must be dev or prod.")
     stem = f"{target}_agent_{name.replace('-', '_')}"
-    return f"{target}-agent-{name}", stem, f"{stem}_connection"
+    return f"agent-{target}-{name}", stem, f"{stem}_connection"
 
 
 def gateway_agent(

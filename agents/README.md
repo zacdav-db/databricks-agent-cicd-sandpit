@@ -23,7 +23,9 @@ entrypoint: agent:invoke
 The folder name and `name` must match. `model` is an alias from
 `agent_platform/policy.yaml`; it is not an arbitrary serving endpoint.
 Names use lowercase letters, digits and hyphens and are at most 19 characters
-so the environment-prefixed Databricks App name remains valid.
+so the `agent-<environment>-<name>` Databricks App name remains valid and
+follows the
+[AI Playground App convention](https://docs.databricks.com/aws/en/getting-started/gen-ai-llm-agent#step-3-export-your-agent).
 
 The entrypoint may be synchronous or asynchronous and must implement:
 
@@ -54,6 +56,11 @@ binding, MLflow tracing, the trace experiment, permissions, target naming,
 DAB generation, and mandatory Unity AI Gateway Agent Service registration.
 Authors cannot provide raw environment variables, resource grants, commands,
 or DAB fragments.
+
+Every composed App exposes the MLflow ResponsesAgent `/responses` and
+`/agent/info` surfaces. Deployment smoke tests require the ResponsesAgent
+metadata and the `agent-` name before the App can be promoted, so the same App
+can be selected from AI Playground without a Model Serving copy.
 
 ## Examples
 

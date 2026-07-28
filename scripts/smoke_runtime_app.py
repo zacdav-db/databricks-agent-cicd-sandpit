@@ -17,6 +17,7 @@ from register_uc_agent import (
 )
 from smoke_test import (
     _api_json,
+    _assert_playground_agent,
     _mcp_request,
     _mcp_scalar,
     _responses_stream,
@@ -56,7 +57,9 @@ def _smoke_langchain(
     warehouse_id: str,
     metadata_principal: str,
 ) -> dict[str, Any]:
-    url = _wait_for_app(client, f"{target}-sandpit-langchain-agent")
+    app_name = f"agent-{target}-sandpit-langchain"
+    url = _wait_for_app(client, app_name)
+    agent_info = _assert_playground_agent(client, app_name, url)
     catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
     schema = os.getenv("UC_SCHEMA", f"{target}_agent_cicd")
     gateway = verify_gateway_registration(
@@ -125,6 +128,7 @@ def _smoke_langchain(
         streaming_result["trace_id"],
     )
     return {
+        "agent_info": agent_info,
         "gateway_agent_service": gateway["agent_service"],
         "gateway_registration_verified": True,
         "custom_mcp_result": custom_result,
