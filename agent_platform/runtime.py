@@ -201,10 +201,16 @@ async def _stream_with_trace(message: str) -> AsyncGenerator[str, None]:
         span_type="CHAIN",
     ) as span:
         span.set_inputs({"message": message})
-        with anyio.fail_after(INVOCATION_TIMEOUT_SECONDS):
-            async for chunk in _author_chunks(message):
-                output.append(chunk)
-                yield chunk
+        with mlflow.start_span(
+            name=f"generated_agent.{os.environ['AGENT_NAME']}.stream",
+            span_type="CHAIN",
+        ) as stream_span:
+            stream_span.set_inputs({"message": message})
+            with anyio.fail_after(INVOCATION_TIMEOUT_SECONDS):
+                async for chunk in _author_chunks(message):
+                    output.append(chunk)
+                    yield chunk
+            stream_span.set_outputs({"output": "".join(output)})
         span.set_outputs({"output": "".join(output)})
 
 
