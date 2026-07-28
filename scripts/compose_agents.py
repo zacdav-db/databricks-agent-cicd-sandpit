@@ -138,6 +138,24 @@ def _validate_tree(folder: Path) -> None:
         raise ContractError(f"{folder.name} exceeds the {MAX_AGENT_BYTES}-byte limit.")
 
 
+def _validate_function_signature(
+    candidate: ast.FunctionDef | ast.AsyncFunctionDef,
+    label: str,
+) -> None:
+    arguments = candidate.args
+    positional = [*arguments.posonlyargs, *arguments.args]
+    if (
+        [argument.arg for argument in positional] != ["message"]
+        or arguments.vararg
+        or arguments.kwarg
+        or arguments.kwonlyargs
+        or arguments.defaults
+    ):
+        raise ContractError(
+            f"{label} must accept exactly one argument named message.",
+        )
+
+
 def _validate_python(folder: Path, entrypoint: str) -> None:
     module_name, separator, function_name = entrypoint.partition(":")
     if (
@@ -173,17 +191,22 @@ def _validate_python(folder: Path, entrypoint: str) -> None:
     )
     if candidate is None:
         raise ContractError(f"Entrypoint function does not exist: {entrypoint}")
-    arguments = candidate.args
-    positional = [*arguments.posonlyargs, *arguments.args]
-    if (
-        [argument.arg for argument in positional] != ["message"]
-        or arguments.vararg
-        or arguments.kwarg
-        or arguments.kwonlyargs
-        or arguments.defaults
-    ):
-        raise ContractError(
-            "Entrypoint must accept exactly one argument named message.",
+    _validate_function_signature(candidate, "Entrypoint")
+
+    stream_name = f"{function_name}_stream"
+    stream_candidate = next(
+        (
+            node
+            for node in entrypoint_tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == stream_name
+        ),
+        None,
+    )
+    if stream_candidate is not None:
+        _validate_function_signature(
+            stream_candidate,
+            f"Optional stream function {stream_name}",
         )
 
 
@@ -521,7 +544,7 @@ def compose(root: Path) -> dict[str, Any]:
                 },
             )
 
-        index = {"contract_version": 3, "agents": index_agents}
+        index = {"contract_version": 4, "agents": index_agents}
         (legacy_bundle_dir / "databricks.yml").write_text(
             yaml.safe_dump(_legacy_bundle_config(agents), sort_keys=False),
             encoding="utf-8",

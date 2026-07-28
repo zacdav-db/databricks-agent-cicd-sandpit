@@ -16,7 +16,7 @@ flowchart LR
     User["User or API client"]
     Omni["Omnigent App"]
     MCP["Custom MCP App<br/>(standalone tool server)"]
-    Agent["LangChain App"]
+    Agent["LangChain App<br/>Responses API + SSE"]
     Generated["Folder-defined agent App"]
     Managed["Managed Functions MCP"]
     Functions["Unity Catalog functions"]
@@ -43,7 +43,7 @@ flowchart LR
 
 | Component | Purpose |
 | --- | --- |
-| `*-sandpit-langchain-agent` | FastAPI LangChain agent using a Databricks Foundation Model, the custom MCP App, and managed Unity Catalog function MCP servers. |
+| `*-sandpit-langchain-agent` | MLflow AgentServer LangChain agent with streaming Responses API, a Databricks Foundation Model, the custom MCP App, and managed Unity Catalog function MCP servers. |
 | `mcp-*-sandpit-tools` | Standalone custom Streamable HTTP MCP server. It exposes tools but has no agent dependency. The `mcp-` prefix makes the App discoverable as an MCP server in AI Playground. |
 | `*-sandpit-omnigent` | Omnigent supervisor that delegates directly to the LangChain App and applies approval policies. |
 | `*-agent-langchain-assistant` | Example App using LangChain through the folder-defined agent contract. |
@@ -67,6 +67,10 @@ Each DAB maps its supported objects at the strongest level currently available:
   [Databricks App resource](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/apps-resource)
   with `CAN_USE`. Its deployment-owned function tool invokes LangChain's
   `/api/invocations` endpoint directly.
+- External clients and the LangChain Agent Service use `/responses`. A
+  `"stream": true` request receives text deltas as LangGraph emits model
+  chunks, followed by the completed item, MLflow trace ID, and terminal SSE
+  event.
 - The fixed LangChain App, Omnigent supervisor, and every folder-defined agent
   are registered after deployment as target-specific Unity Catalog Agent
   Services in Unity AI Gateway. The sandpit owner receives `EXECUTE` and
@@ -97,6 +101,8 @@ See the Databricks documentation for
 [Agent Services](https://docs.databricks.com/aws/en/ai-gateway/agent-services),
 and
 [MCP Service limitations](https://docs.databricks.com/aws/en/agents/mcp/mcp-services).
+The streaming route follows Databricks'
+[custom-agent Responses API contract](https://docs.databricks.com/aws/en/agents/custom-agents/author-agent).
 
 ## Trace storage
 

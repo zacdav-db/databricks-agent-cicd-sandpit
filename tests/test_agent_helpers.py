@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import io
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -129,12 +131,59 @@ def test_langchain_uses_supported_multi_server_client_lifecycle(
         "create_agent",
         lambda **kwargs: FakeAgent(kwargs["tools"]),
     )
+    monkeypatch.setattr(module, "configure_tracing", lambda: None)
     monkeypatch.setattr(module.mlflow, "start_span", lambda **_kwargs: FakeSpan())
 
     assert asyncio.run(module.invoke_agent("question")) == (
         "managed MCP answer",
         "trace-id",
     )
+
+
+def test_langchain_streams_model_chunks_inside_one_trace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "langchain_agent_streaming",
+        ROOT / "src" / "langchain_agent" / "agent.py",
+    )
+
+    class FakeSpan:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def set_inputs(self, _inputs: dict[str, str]) -> None:
+            return None
+
+        def set_outputs(self, outputs: dict[str, str]) -> None:
+            assert outputs == {"output": "hello world"}
+
+    class FakeAgent:
+        async def astream(
+            self,
+            _inputs: dict[str, object],
+            *,
+            stream_mode: str,
+        ):
+            assert stream_mode == "messages"
+            for text in ("hello", " ", "world"):
+                yield SimpleNamespace(content=text), {}
+
+    async def create_agent() -> FakeAgent:
+        return FakeAgent()
+
+    monkeypatch.setattr(module, "configure_tracing", lambda: None)
+    monkeypatch.setattr(module, "_create_tool_agent", create_agent)
+    monkeypatch.setattr(module, "_chunk_text", lambda message: message.content)
+    monkeypatch.setattr(module.mlflow, "start_span", lambda **_kwargs: FakeSpan())
+
+    async def collect() -> list[str]:
+        return [chunk async for chunk in module.stream_agent("question")]
+
+    assert asyncio.run(collect()) == ["hello", " ", "world"]
 
 
 def test_trace_smoke_requires_a_child_of_the_platform_root(
@@ -162,6 +211,53 @@ def test_trace_smoke_requires_a_child_of_the_platform_root(
     assert counts == {"trace_rows": 2, "direct_child_rows": 1}
     assert "parent_span_id" in statements[0]
     assert "generated_agent.openai-assistant" in statements[0]
+
+
+def test_responses_stream_requires_deltas_done_event_and_trace() -> None:
+    module = _load(
+        "smoke_test_responses_stream",
+        ROOT / "scripts" / "smoke_test.py",
+    )
+    events = [
+        {
+            "type": "response.output_text.delta",
+            "item_id": "message-1",
+            "delta": "hello ",
+        },
+        {
+            "type": "response.output_text.delta",
+            "item_id": "message-1",
+            "delta": "world",
+        },
+        {
+            "type": "response.output_item.done",
+            "item": {
+                "type": "message",
+                "id": "message-1",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "hello world"}],
+            },
+        },
+        {"trace_id": "trace-id"},
+    ]
+    body = "".join(
+        f"data: {json.dumps(event)}\n\n"
+        for event in events
+    ) + "data: [DONE]\n\n"
+
+    class FakeApiClient:
+        def do(self, *_args: object, **_kwargs: object) -> dict[str, object]:
+            return {
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "contents": io.BytesIO(body.encode()),
+            }
+
+    client = SimpleNamespace(api_client=FakeApiClient())
+    assert module._responses_stream(client, "https://agent.example", "hello") == {
+        "delta_count": 2,
+        "output": "hello world",
+        "trace_id": "trace-id",
+    }
 
 
 def test_agent_service_inventory_names_and_connection() -> None:
@@ -248,7 +344,7 @@ def test_uc_registration_extends_the_sdk_client(
                                 "catalog_name.schema_name.agent_connection"
                             ),
                         },
-                        "base_path": "/api/invocations",
+                        "base_path": "/responses",
                     },
                 }
             if method == "POST":
@@ -285,7 +381,7 @@ def test_uc_registration_extends_the_sdk_client(
         service_name="agent_service",
         connection_full_name=connection,
         target="dev",
-        base_path="/api/invocations",
+        base_path="/responses",
         system_prompt="Be concise.",
     )
     module._grant_metadata(client, service, "owner@example.com")
@@ -293,7 +389,7 @@ def test_uc_registration_extends_the_sdk_client(
         app_name="dev-agent",
         service_name="agent_service",
         connection_name="agent_connection",
-        base_path="/api/invocations",
+        base_path="/responses",
         system_prompt="Be concise.",
     )
     verified = module.verify_gateway_registration(
@@ -349,7 +445,7 @@ def test_gateway_registration_fails_without_required_grants() -> None:
                             "connections/catalog_name.schema_name.agent_connection"
                         ),
                     },
-                    "base_path": "/api/invocations",
+                    "base_path": "/responses",
                 },
             },
             grants={
@@ -362,7 +458,7 @@ def test_gateway_registration_fails_without_required_grants() -> None:
             },
             service_full_name="catalog_name.schema_name.agent_service",
             connection_full_name="catalog_name.schema_name.agent_connection",
-            base_path="/api/invocations",
+            base_path="/responses",
             principal="owner@example.com",
         )
 

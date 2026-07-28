@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import importlib.util
 import sys
 from pathlib import Path
@@ -182,6 +183,28 @@ def test_health_configures_tracing_before_author_import(monkeypatch) -> None:
 
     assert runtime.health() == {"status": "ok"}
     assert calls == ["configure", "author_import"]
+    assert "/responses" in {route.path for route in runtime.app.routes}
+
+    async def invoke_stream(message: str):
+        yield f"{message} "
+        yield "streamed"
+
+    monkeypatch.setattr(
+        runtime.importlib,
+        "import_module",
+        lambda _name: SimpleNamespace(
+            invoke=lambda message: message,
+            invoke_stream=invoke_stream,
+        ),
+    )
+    runtime._author_module.cache_clear()
+    runtime._invoker.cache_clear()
+    runtime._streamer.cache_clear()
+
+    async def collect() -> list[str]:
+        return [chunk async for chunk in runtime._author_chunks("response")]
+
+    assert asyncio.run(collect()) == ["response ", "streamed"]
 
 
 def test_external_author_has_no_platform_tracing_dependency() -> None:

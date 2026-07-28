@@ -31,6 +31,20 @@ The entrypoint may be synchronous or asynchronous and must implement:
 def invoke(message: str) -> str: ...
 ```
 
+Streaming is optional and uses a convention instead of another manifest
+field:
+
+```python
+def invoke_stream(message: str):
+    yield "first chunk"
+    yield "second chunk"
+```
+
+`invoke_stream` may return a synchronous or asynchronous iterator of strings.
+When present, the platform forwards its chunks through the standard
+`/responses` Server-Sent Events stream. Without it, streaming callers still
+receive a valid one-chunk response generated from `invoke`.
+
 No platform SDK import is required. Call an existing LangChain, OpenAI Agents
 SDK, or custom implementation inside this function. The approved model alias
 is resolved to the `MODEL_ENDPOINT` environment variable.
@@ -43,7 +57,8 @@ or DAB fragments.
 
 ## Examples
 
-All four examples implement the same one-function contract:
+All four examples implement the required invocation function and the optional
+streaming convention:
 
 | Folder | Implementation |
 | --- | --- |

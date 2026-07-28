@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from functools import lru_cache
 
 from databricks.sdk import WorkspaceClient
@@ -41,3 +42,19 @@ def invoke(message: str) -> str:
     if not text:
         raise RuntimeError("Gemini returned no text.")
     return text
+
+
+def invoke_stream(message: str) -> Iterator[str]:
+    """Stream text from the native Gemini-compatible endpoint."""
+    client = _client()
+    try:
+        response = client.models.generate_content_stream(
+            model=os.environ["MODEL_ENDPOINT"],
+            contents=message,
+            config=types.GenerateContentConfig(max_output_tokens=300),
+        )
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
+    finally:
+        client.close()

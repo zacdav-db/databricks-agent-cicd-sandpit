@@ -47,11 +47,26 @@ def invoke(message: str) -> str:
     return f"Received: {message}"
 ```
 
+For true streaming, add the optional companion function. It may return a
+synchronous or asynchronous iterator:
+
+```python
+def invoke_stream(message: str):
+    yield "Received: "
+    yield message
+```
+
 The function may call an existing LangChain, OpenAI Agents SDK, or custom
 agent. The platform normalizes only this invocation boundary and supplies the
 approved
 [Foundation Model API](https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis)
 endpoint as `MODEL_ENDPOINT`.
+
+Every agent is served through the
+[MLflow Responses API](https://docs.databricks.com/aws/en/agents/custom-agents/author-agent)
+at `/responses`. With `"stream": true`, clients receive standard Server-Sent
+Events as the underlying implementation produces tokens. The original
+`/api/invocations` route remains as a compatibility endpoint.
 
 The generated runtime also enables supported MLflow provider integrations
 before it imports the author module, so model calls become child spans without
@@ -104,7 +119,7 @@ flowchart LR
     User["User"]
     Omni["Omnigent App"]
     MCP["Custom MCP App<br/>(standalone tool server)"]
-    Agent["LangChain App"]
+    Agent["LangChain App<br/>Responses API + streaming"]
     Managed["Managed Functions MCP"]
     Function["Unity Catalog function"]
     Model["Foundation Model"]
@@ -187,7 +202,7 @@ Each target currently has seven App definitions:
 
 | App | Role |
 | --- | --- |
-| `*-sandpit-langchain-agent` | LangChain agent with the custom MCP App, [managed Unity Catalog function tools](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp#unity-catalog-functions), and MLflow tracing. |
+| `*-sandpit-langchain-agent` | Streaming LangChain agent with the custom MCP App, [managed Unity Catalog function tools](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp#unity-catalog-functions), and MLflow tracing. |
 | `mcp-*-sandpit-tools` | Custom [Model Context Protocol (MCP)](https://docs.databricks.com/aws/en/agents/mcp/custom-mcp) server, named with the required `mcp-` prefix for AI Playground discovery. |
 | `*-sandpit-omnigent` | Policy-controlled [Omnigent](https://omnigent.ai/docs/use/custom-agents) supervisor that delegates directly to the LangChain App. |
 | `*-agent-langchain-assistant` | Folder agent using LangChain `ChatDatabricks`. |
