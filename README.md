@@ -90,10 +90,14 @@ The repository is easier to understand as three separate views.
 
 ### Runtime example
 
-The original example connects three Apps with a
+The original example connects three Databricks Apps. Omnigent delegates to
+LangChain, and LangChain uses both the custom MCP App and a
 [Databricks managed MCP server](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp)
-over Unity Catalog functions. The LangChain App owns model calls and
+over Unity Catalog functions. The LangChain App owns the downstream agent's
+model call, tool selection, and
 [MLflow Tracing](https://docs.databricks.com/aws/en/mlflow3/genai/tracing/).
+Omnigent uses the same foundation-model endpoint for supervision and
+delegation.
 
 ```mermaid
 flowchart LR
@@ -107,13 +111,13 @@ flowchart LR
     Traces[("Unity Catalog traces")]
 
     User --> Omni
-    Omni --> MCP
-    MCP --> Agent
-    Omni --> Managed
-    Agent --> Managed
-    Managed --> Function
-    Agent --> Model
-    Agent --> Traces
+    Omni -->|"direct App invocation"| Agent
+    Agent -->|"custom tools"| MCP
+    Agent -->|"governed tools"| Managed
+    Managed -->|"execute"| Function
+    Omni -->|"supervision"| Model
+    Agent -->|"inference"| Model
+    Agent -->|"MLflow spans"| Traces
 ```
 
 [Runtime architecture and governance details](docs/architecture/runtime-example.md)
@@ -181,9 +185,9 @@ Each target currently has seven App definitions:
 
 | App | Role |
 | --- | --- |
-| `*-sandpit-langchain-agent` | LangChain agent with [managed Unity Catalog function tools](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp#unity-catalog-functions) and MLflow tracing. |
+| `*-sandpit-langchain-agent` | LangChain agent with the custom MCP App, [managed Unity Catalog function tools](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp#unity-catalog-functions), and MLflow tracing. |
 | `mcp-*-sandpit-tools` | Custom [Model Context Protocol (MCP)](https://docs.databricks.com/aws/en/agents/mcp/custom-mcp) server, named with the required `mcp-` prefix for AI Playground discovery. |
-| `*-sandpit-omnigent` | Policy-controlled [Omnigent](https://docs.databricks.com/aws/en/omnigent/) supervisor. |
+| `*-sandpit-omnigent` | Policy-controlled [Omnigent](https://omnigent.ai/docs/use/custom-agents) supervisor that delegates directly to the LangChain App. |
 | `*-agent-langchain-assistant` | Folder agent using LangChain `ChatDatabricks`. |
 | `*-agent-gemini-assistant` | Folder agent using the native Google Gen AI SDK. |
 | `*-agent-claude-assistant` | Folder agent using the native Anthropic SDK. |

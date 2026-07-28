@@ -67,9 +67,20 @@ def test_deployment_platform_change_selects_every_unit() -> None:
         ["scripts/migrate_app_bundle.sh"],
         AGENTS,
     ) == {
-        "apps": ["langchain", "mcp", "omnigent"],
+        "apps": ["mcp", "langchain", "omnigent"],
         "agents": AGENTS,
     }
+
+
+def test_runtime_dependencies_deploy_in_call_order() -> None:
+    assert select_deployments(
+        [
+            "src/omnigent_app/config.yaml",
+            "src/langchain_agent/agent.py",
+            "src/mcp_server/server.py",
+        ],
+        AGENTS,
+    )["apps"] == ["mcp", "langchain", "omnigent"]
 
 
 def test_docs_and_tests_do_not_trigger_deployment() -> None:

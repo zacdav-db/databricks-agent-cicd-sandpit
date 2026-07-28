@@ -75,14 +75,19 @@ while IFS= read -r agent_name; do
     "${experiment_id}"
 done < <(jq -r '.agents[]' <<<"${selection}")
 
+if [[ "$(jq -r '.apps | length' <<<"${selection}")" -gt 0 ]] &&
+  ! jq -e '.apps | index("omnigent") != null' <<<"${selection}" >/dev/null; then
+  printf 'Smoke testing the unchanged downstream runtime consumers\n'
+  "${python_bin}" scripts/smoke_runtime_app.py \
+    --target "${target}" \
+    --app topology \
+    --warehouse-id "${DATABRICKS_WAREHOUSE_ID}"
+fi
+
 if jq -e '.apps | index("mcp") != null' <<<"${selection}" >/dev/null; then
   replacement_app="mcp-${target}-sandpit-tools"
   legacy_app="${target}-sandpit-mcp-tools"
   if databricks_app_exists "${legacy_app}"; then
-    if ! jq -e '.apps | index("omnigent") != null' <<<"${selection}" >/dev/null; then
-      echo "Refusing to retire ${legacy_app} without redeploying Omnigent." >&2
-      exit 1
-    fi
     databricks apps get "${replacement_app}" -o json >/dev/null
     printf 'Retiring replaced MCP App %s\n' "${legacy_app}"
     databricks apps delete "${legacy_app}" --auto-approve

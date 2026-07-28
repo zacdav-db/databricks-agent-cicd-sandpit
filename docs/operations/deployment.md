@@ -51,9 +51,14 @@ The deployment is idempotent. It:
 5. Starts each selected unit.
 6. Registers every selected agent App in Unity AI Gateway and verifies its
    Agent Service, connection, base path, and required grants.
-7. Invokes and trace-smoke-tests only each selected unit.
-8. After a prefixed MCP replacement and its Omnigent dependency both pass
-   smoke tests, retires the exact legacy non-prefixed MCP App if it exists.
+7. Smoke-tests each selected unit. A runtime-App change also runs the
+   end-to-end Omnigent → LangChain → custom MCP acceptance path and verifies
+   the resulting LangChain trace, without redeploying unchanged consumers.
+8. After a prefixed MCP replacement passes its smoke test, retires the exact
+   legacy non-prefixed MCP App if it exists.
+
+When all runtime Apps are selected, they deploy in dependency order:
+`mcp → langchain → omnigent`.
 
 Local deployment selects every unit. CI instead supplies the push's base and
 head commits, so an agent-only change deploys only that agent.

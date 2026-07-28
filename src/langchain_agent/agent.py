@@ -1,4 +1,4 @@
-"""Small LangChain agent using governed tools from Databricks managed MCP."""
+"""Small LangChain agent using custom and managed MCP tools."""
 
 from __future__ import annotations
 
@@ -46,20 +46,37 @@ def _function_mcp_url(host: str, function_full_name: str) -> str:
     return f"{host.rstrip('/')}/api/2.0/mcp/functions/{path}"
 
 
+def _custom_mcp_url(workspace_client: WorkspaceClient) -> str:
+    """Resolve the custom MCP App resource to its Streamable HTTP endpoint."""
+    app_name = os.environ["CUSTOM_MCP_APP_NAME"]
+    app = workspace_client.apps.get(name=app_name)
+    if not app.url:
+        raise RuntimeError(f"Databricks App {app_name} does not have a URL.")
+    return f"{app.url.rstrip('/')}/mcp"
+
+
 def _mcp_client(workspace_client: WorkspaceClient) -> DatabricksMultiServerMCPClient:
     function_names = {
         "project-cost": os.environ["UC_COST_FUNCTION_FULL_NAME"],
         "current-time": os.environ["UC_TIME_FUNCTION_FULL_NAME"],
     }
+    servers = [
+        DatabricksMCPServer(
+            name="custom-tools",
+            url=_custom_mcp_url(workspace_client),
+            workspace_client=workspace_client,
+        ),
+    ]
+    servers.extend(
+        DatabricksMCPServer(
+            name=name,
+            url=_function_mcp_url(workspace_client.config.host, function_name),
+            workspace_client=workspace_client,
+        )
+        for name, function_name in function_names.items()
+    )
     return DatabricksMultiServerMCPClient(
-        [
-            DatabricksMCPServer(
-                name=name,
-                url=_function_mcp_url(workspace_client.config.host, function_name),
-                workspace_client=workspace_client,
-            )
-            for name, function_name in function_names.items()
-        ],
+        servers,
     )
 
 
@@ -94,16 +111,16 @@ def _tool_result_text(value: Any) -> str:
     return json.dumps(_plain_value(value), separators=(",", ":"), sort_keys=True)
 
 
-def _plain_text_tool(managed_tool: Any) -> StructuredTool:
-    async def invoke_managed_tool(**arguments: Any) -> str:
-        result = await managed_tool.ainvoke(arguments)
+def _plain_text_tool(mcp_tool: Any) -> StructuredTool:
+    async def invoke_mcp_tool(**arguments: Any) -> str:
+        result = await mcp_tool.ainvoke(arguments)
         return _tool_result_text(result)
 
     return StructuredTool.from_function(
-        coroutine=invoke_managed_tool,
-        name=managed_tool.name,
-        description=managed_tool.description,
-        args_schema=managed_tool.args_schema,
+        coroutine=invoke_mcp_tool,
+        name=mcp_tool.name,
+        description=mcp_tool.description,
+        args_schema=mcp_tool.args_schema,
         infer_schema=False,
     )
 
@@ -121,6 +138,10 @@ async def invoke_agent(message: str) -> tuple[str, str]:
             tools=tools,
             system_prompt=(
                 "You are a concise delivery-planning assistant. "
+                "Use the custom MCP tools for text transformations and diagnostics. "
+                "Always call the uppercase tool when the user asks to uppercase text. "
+                "Always call get_current_identity when the user asks for the custom "
+                "MCP identity. "
                 "Use the governed Unity Catalog tools for current time and cost estimates. "
                 "State assumptions and never invent a tool result."
             ),
