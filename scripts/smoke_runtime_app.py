@@ -8,6 +8,11 @@ import os
 import time
 from typing import Any
 
+from app_names import (
+    langchain_agent_app_name,
+    mcp_app_name,
+    omnigent_app_name,
+)
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
 from register_uc_agent import (
@@ -17,6 +22,7 @@ from register_uc_agent import (
 )
 from smoke_test import (
     _api_json,
+    _assert_playground_agent,
     _mcp_request,
     _mcp_scalar,
     _responses_stream,
@@ -27,7 +33,7 @@ from smoke_test import (
 
 
 def _custom_mcp_identity(client: WorkspaceClient, target: str) -> str:
-    url = _wait_for_app(client, f"mcp-{target}-sandpit-tools")
+    url = _wait_for_app(client, mcp_app_name(target))
     endpoint = f"{url}/mcp"
     _mcp_request(
         client,
@@ -56,7 +62,9 @@ def _smoke_langchain(
     warehouse_id: str,
     metadata_principal: str,
 ) -> dict[str, Any]:
-    url = _wait_for_app(client, f"{target}-sandpit-langchain-agent")
+    app_name = langchain_agent_app_name(target)
+    url = _wait_for_app(client, app_name)
+    agent_info = _assert_playground_agent(client, app_name, url)
     catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
     schema = os.getenv("UC_SCHEMA", f"{target}_agent_cicd")
     gateway = verify_gateway_registration(
@@ -65,6 +73,7 @@ def _smoke_langchain(
         schema=schema,
         registration=gateway_agent(target, runtime_agent="langchain"),
         principal=metadata_principal,
+        app_url=url,
     )
     _api_json(client, "GET", f"{url}/api/health")
     managed_result = _api_json(
@@ -125,6 +134,7 @@ def _smoke_langchain(
         streaming_result["trace_id"],
     )
     return {
+        "agent_info": agent_info,
         "gateway_agent_service": gateway["agent_service"],
         "gateway_registration_verified": True,
         "custom_mcp_result": custom_result,
@@ -135,7 +145,7 @@ def _smoke_langchain(
 
 
 def _smoke_mcp(client: WorkspaceClient, target: str) -> dict[str, Any]:
-    url = _wait_for_app(client, f"mcp-{target}-sandpit-tools")
+    url = _wait_for_app(client, mcp_app_name(target))
     endpoint = f"{url}/mcp"
     _mcp_request(
         client,
@@ -184,7 +194,7 @@ def _smoke_omnigent(
     warehouse_id: str,
     metadata_principal: str,
 ) -> dict[str, Any]:
-    url = _wait_for_app(client, f"{target}-sandpit-omnigent")
+    url = _wait_for_app(client, omnigent_app_name(target))
     catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
     schema = os.getenv("UC_SCHEMA", f"{target}_agent_cicd")
     gateway = verify_gateway_registration(
@@ -193,6 +203,7 @@ def _smoke_omnigent(
         schema=schema,
         registration=gateway_agent(target, runtime_agent="omnigent"),
         principal=metadata_principal,
+        app_url=url,
     )
     _api_json(client, "GET", f"{url}/health")
     deadline = time.monotonic() + 120

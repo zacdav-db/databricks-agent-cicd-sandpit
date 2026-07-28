@@ -47,7 +47,7 @@ targets:
 resources:
   apps:
     langchain_agent:
-      name: ${var.resource_prefix}-sandpit-langchain-agent
+      name: agent-${var.resource_prefix}-sandpit-langchain
       description: LangChain tool-calling agent with MLflow traces stored in Unity Catalog.
       source_code_path: .
       config:

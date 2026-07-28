@@ -17,6 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load(name: str, path: Path):
+    scripts_path = str(ROOT / "scripts")
+    if scripts_path not in sys.path:
+        sys.path.insert(0, scripts_path)
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise RuntimeError(path)
@@ -260,18 +263,73 @@ def test_responses_stream_requires_deltas_done_event_and_trace() -> None:
     }
 
 
+def test_playground_agent_contract_requires_prefix_and_responses_metadata() -> None:
+    module = _load(
+        "smoke_test_playground_contract",
+        ROOT / "scripts" / "smoke_test.py",
+    )
+
+    class FakeApiClient:
+        def do(self, method: str, **kwargs: object) -> dict[str, str]:
+            assert method == "GET"
+            assert kwargs["url"] == "https://agent.example/agent/info"
+            return {"use_case": "agent", "agent_api": "responses"}
+
+    client = SimpleNamespace(api_client=FakeApiClient())
+    assert module._assert_playground_agent(
+        client,
+        "agent-dev-example",
+        "https://agent.example/",
+    ) == {"use_case": "agent", "agent_api": "responses"}
+    with pytest.raises(RuntimeError, match="must start with agent-"):
+        module._assert_playground_agent(
+            client,
+            "dev-agent-example",
+            "https://agent.example",
+        )
+
+
+@pytest.mark.parametrize(
+    "agent_info",
+    [
+        {},
+        {"use_case": "chat", "agent_api": "responses"},
+        {"use_case": "agent", "agent_api": "chat_completions"},
+    ],
+)
+def test_playground_agent_contract_rejects_invalid_metadata(
+    agent_info: dict[str, str],
+) -> None:
+    module = _load(
+        "smoke_test_invalid_playground_contract",
+        ROOT / "scripts" / "smoke_test.py",
+    )
+    client = SimpleNamespace(
+        api_client=SimpleNamespace(
+            do=lambda *_args, **_kwargs: agent_info,
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="not a ResponsesAgent App"):
+        module._assert_playground_agent(
+            client,
+            "agent-dev-example",
+            "https://agent.example",
+        )
+
+
 def test_agent_service_inventory_names_and_connection() -> None:
     module = _load(
         "register_uc_agent",
         ROOT / "scripts" / "register_uc_agent.py",
     )
     assert module._inventory_names("prod") == (
-        "prod-sandpit-langchain-agent",
+        "agent-prod-sandpit-langchain",
         "prod_sandpit_langchain_agent",
         "prod_sandpit_langchain_agent_connection",
     )
     assert module._generated_inventory_names("dev", "langchain-assistant") == (
-        "dev-agent-langchain-assistant",
+        "agent-dev-langchain-assistant",
         "dev_agent_langchain_assistant",
         "dev_agent_langchain_assistant_connection",
     )
@@ -309,8 +367,10 @@ def test_uc_registration_extends_the_sdk_client(
         def __init__(self) -> None:
             self.created: dict[str, object] | None = None
 
-        def get(self, _name: str) -> None:
-            raise FakeNotFound
+        def get(self, _name: str) -> object:
+            if self.created is None:
+                raise FakeNotFound
+            return SimpleNamespace(options=self.created["options"])
 
         def create(self, **kwargs: object) -> None:
             self.created = kwargs
@@ -398,6 +458,7 @@ def test_uc_registration_extends_the_sdk_client(
         schema="schema_name",
         registration=registration,
         principal="owner@example.com",
+        app_url="https://agent.example",
     )
 
     assert connection == "catalog_name.schema_name.agent_connection"
@@ -427,6 +488,33 @@ def test_uc_registration_extends_the_sdk_client(
         "principal": "owner@example.com",
         "add": ["EXECUTE", "READ_METADATA"],
     }
+
+
+def test_existing_gateway_connection_requires_the_current_app_origin() -> None:
+    module = _load(
+        "register_uc_agent_connection_origin",
+        ROOT / "scripts" / "register_uc_agent.py",
+    )
+    current = SimpleNamespace(
+        options={"host": "https://agent-old.example"},
+    )
+    client = SimpleNamespace(
+        connections=SimpleNamespace(get=lambda _name: current),
+        config=SimpleNamespace(
+            client_id=None,
+            client_secret=None,
+            host="https://workspace.example",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="required to update"):
+        module._upsert_connection(
+            client,
+            catalog="catalog",
+            schema="schema",
+            connection_name="agent_connection",
+            app_url="https://agent-new.example",
+        )
 
 
 def test_gateway_registration_fails_without_required_grants() -> None:
@@ -481,6 +569,10 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
         "bootstrap_target_defaults",
         ROOT / "scripts" / "bootstrap_resources.py",
     )
+    app_names = _load(
+        "app_names_contract",
+        ROOT / "scripts" / "app_names.py",
+    )
     langchain_bundle = yaml.safe_load(
         (ROOT / "src" / "langchain_agent" / "databricks.yml").read_text(
             encoding="utf-8",
@@ -497,7 +589,7 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
         assert variables["uc_time_function_name"] == defaults["time_function_name"]
 
     assert langchain_bundle["resources"]["apps"]["langchain_agent"]["name"] == (
-        "${var.resource_prefix}-sandpit-langchain-agent"
+        app_names.langchain_agent_app_template()
     )
     mcp_bundle = yaml.safe_load(
         (ROOT / "src" / "mcp_server" / "databricks.yml").read_text(
@@ -510,7 +602,7 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
         ),
     )
     mcp_app_name = mcp_bundle["resources"]["apps"]["mcp_server"]["name"]
-    assert mcp_app_name == "mcp-${var.resource_prefix}-sandpit-tools"
+    assert mcp_app_name == app_names.mcp_app_template()
     assert "resources" not in mcp_bundle["resources"]["apps"]["mcp_server"]
     langchain_resources = {
         resource["name"]: resource
@@ -527,7 +619,7 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
             "${var.resource_prefix}",
             target,
         )
-        assert resolved_mcp_name.startswith("mcp-")
+        assert resolved_mcp_name == app_names.mcp_app_name(target)
         assert (
             langchain_bundle["targets"][target]["variables"]["custom_mcp_app_name"]
             == resolved_mcp_name
@@ -536,7 +628,7 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
             omnigent_bundle["targets"][target]["variables"][
                 "langchain_agent_app_name"
             ]
-            == f"{target}-sandpit-langchain-agent"
+            == app_names.langchain_agent_app_name(target)
         )
     assert langchain_resources["custom_mcp_app"]["app"] == {
         "name": "${var.custom_mcp_app_name}",
@@ -547,7 +639,7 @@ def test_bundle_targets_match_bootstrap_namespaces() -> None:
         "permission": "CAN_USE",
     }
     assert omnigent_bundle["resources"]["apps"]["omnigent"]["name"] == (
-        "${var.resource_prefix}-sandpit-omnigent"
+        app_names.omnigent_app_template()
     )
 
 

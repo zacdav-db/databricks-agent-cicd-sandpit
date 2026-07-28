@@ -8,7 +8,8 @@
 - `jq`
 - A valid `sandpit` profile
 - OAuth M2M credentials in `DATABRICKS_CLIENT_ID` and
-  `DATABRICKS_CLIENT_SECRET` when an Agent Service connection is first created
+  `DATABRICKS_CLIENT_SECRET` when an Agent Service connection is created or
+  updated for a replacement App URL
 
 ## Setup
 
@@ -51,14 +52,15 @@ The deployment is idempotent. It:
 4. Validates and deploys each selected DAB.
 5. Starts each selected unit.
 6. Registers every selected agent App in Unity AI Gateway and verifies its
-   Agent Service, connection, base path, and required grants.
+   Agent Service, connection origin, base path, and required grants.
 7. Smoke-tests each selected agent through the streaming Responses API,
-   verifies its trace and provider child span, and checks other selected
-   units. A runtime-App change also runs the end-to-end
+   verifies its `agent-` name and `/agent/info` Playground contract, verifies
+   its trace and provider child span, and checks other selected units. A
+   runtime-App change also runs the end-to-end
    Omnigent → LangChain → custom MCP acceptance path without redeploying
    unchanged consumers.
-8. After a prefixed MCP replacement passes its smoke test, retires the exact
-   legacy non-prefixed MCP App if it exists.
+8. After a renamed App passes its smoke test, retires only its exact legacy
+   App name if it exists.
 
 When all runtime Apps are selected, they deploy in dependency order:
 `mcp → langchain → omnigent`.
@@ -84,10 +86,10 @@ cd ../../../src/mcp_server
 databricks bundle validate -t dev
 databricks bundle deploy -t dev
 
-databricks apps logs dev-sandpit-langchain-agent -p sandpit
+databricks apps logs agent-dev-sandpit-langchain -p sandpit
 databricks apps logs mcp-dev-sandpit-tools -p sandpit
 databricks apps logs dev-sandpit-omnigent -p sandpit
-databricks apps logs dev-agent-langchain-assistant -p sandpit
+databricks apps logs agent-dev-langchain-assistant -p sandpit
 ```
 
 Query a deployed agent with the Databricks OpenAI client:
@@ -97,7 +99,7 @@ from databricks_openai import DatabricksOpenAI
 
 client = DatabricksOpenAI()
 events = client.responses.create(
-    model="apps/dev-agent-langchain-assistant",
+    model="apps/agent-dev-langchain-assistant",
     input="Explain streaming in one sentence.",
     stream=True,
 )
