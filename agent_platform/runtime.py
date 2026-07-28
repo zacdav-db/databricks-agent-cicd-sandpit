@@ -12,10 +12,9 @@ from typing import Any
 
 import anyio
 import mlflow
+from _platform_tracing import configure_tracing
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-
-from _platform_tracing import configure_tracing
 
 logger = logging.getLogger(__name__)
 Invoker = Callable[[str], str | Awaitable[str]]
