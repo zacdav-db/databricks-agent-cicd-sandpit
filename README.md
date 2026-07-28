@@ -103,7 +103,7 @@ delegation.
 flowchart LR
     User["User"]
     Omni["Omnigent App"]
-    MCP["Custom MCP App"]
+    MCP["Custom MCP App<br/>(standalone tool server)"]
     Agent["LangChain App"]
     Managed["Managed Functions MCP"]
     Function["Unity Catalog function"]
@@ -119,6 +119,8 @@ flowchart LR
     Agent -->|"inference"| Model
     Agent -->|"MLflow spans"| Traces
 ```
+
+The custom MCP has no outbound agent dependency: LangChain is its client.
 
 [Runtime architecture and governance details](docs/architecture/runtime-example.md)
 
