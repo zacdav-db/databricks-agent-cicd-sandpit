@@ -7,7 +7,11 @@ resource_key="${3:?Usage: migrate_app_bundle.sh <target> <bundle-dir> <resource-
 app_name="${4:?Usage: migrate_app_bundle.sh <target> <bundle-dir> <resource-key> <app-name> [bundle args...]}"
 shift 4
 legacy_dir=".generated/legacy-shared-bundle"
-bundle_args=(-t "${target}" "$@")
+bundle_args=("$@")
+if [[ "${#bundle_args[@]}" -lt 2 ]]; then
+  echo "Bundle arguments must include -t <target>." >&2
+  exit 1
+fi
 
 legacy_id="$(
   cd "${legacy_dir}"
