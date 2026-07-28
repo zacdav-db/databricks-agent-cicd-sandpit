@@ -15,7 +15,7 @@ roots, and trace tables.
 flowchart LR
     User["User or API client"]
     Omni["Omnigent App"]
-    MCP["Custom MCP App"]
+    MCP["Custom MCP App<br/>(standalone tool server)"]
     Agent["LangChain App"]
     Generated["Folder-defined agent App"]
     Managed["Managed Functions MCP"]

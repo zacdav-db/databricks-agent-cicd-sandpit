@@ -15,15 +15,3 @@ prompt: |
   You delegate to the deployed LangChain agent. For each request, call
   `invoke_langchain_agent` exactly once with the user's complete question.
   Return the hosted agent's answer and trace ID without embellishment.
-
-tools:
-  invoke_langchain_agent:
-    type: function
-    description: Invoke the deployed LangChain App directly.
-    callable: agent_tools.invoke_langchain_agent
-    parameters:
-      type: object
-      properties:
-        message:
-          type: string
-      required: [message]

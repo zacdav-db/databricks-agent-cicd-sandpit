@@ -1,18 +1,13 @@
-"""Deployment-owned tools used by the Omnigent supervisor."""
+"""Tool for delegating a request to the deployed LangChain App."""
 
 from __future__ import annotations
 
 import os
 from functools import lru_cache
-from typing import TypedDict
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
-
-
-class AgentResponse(TypedDict):
-    output: str
-    trace_id: str
+from omnigent_client import tool
 
 
 @lru_cache(maxsize=1)
@@ -25,8 +20,13 @@ def _workspace_client() -> WorkspaceClient:
     )
 
 
-def invoke_langchain_agent(message: str) -> AgentResponse:
-    """Invoke the LangChain App directly and return its answer and trace ID."""
+@tool
+def invoke_langchain_agent(message: str) -> dict[str, str]:
+    """Invoke LangChain and return its answer and MLflow trace ID.
+
+    Args:
+        message: The complete question for the deployed LangChain agent.
+    """
     payload = _workspace_client().api_client.do(
         "POST",
         url=f"{os.environ['LANGCHAIN_AGENT_URL'].rstrip('/')}/api/invocations",
@@ -34,6 +34,7 @@ def invoke_langchain_agent(message: str) -> AgentResponse:
     )
     if not isinstance(payload, dict):
         raise RuntimeError("LangChain App returned a non-object response.")
+
     output = payload.get("output")
     trace_id = payload.get("trace_id")
     if not isinstance(output, str) or not isinstance(trace_id, str):
