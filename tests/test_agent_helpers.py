@@ -601,6 +601,25 @@ def test_omnigent_launcher_uses_one_identity_behind_app_auth(
     assert module.LOCAL_AUTH_HEADER != "X-Forwarded-Email"
 
 
+def test_omnigent_launcher_passes_app_url_to_child_runners(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(
+        "omnigent_launcher_runner_env",
+        ROOT / "src" / "omnigent_app" / "launch.py",
+    )
+    monkeypatch.setenv(
+        module.RUNNER_ENV_PASSTHROUGH,
+        "EXISTING_SETTING, LANGCHAIN_AGENT_URL",
+    )
+
+    module._configure_runner_environment()
+
+    assert module.os.environ[module.RUNNER_ENV_PASSTHROUGH] == (
+        "EXISTING_SETTING,LANGCHAIN_AGENT_URL"
+    )
+
+
 def test_omnigent_direct_tool_invokes_langchain_app(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

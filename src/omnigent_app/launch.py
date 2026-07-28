@@ -15,6 +15,7 @@ import urllib.request
 from databricks.sdk import WorkspaceClient
 
 LOCAL_AUTH_HEADER = "X-Omnigent-Local-Identity"
+RUNNER_ENV_PASSTHROUGH = "OMNIGENT_RUNNER_ENV_PASSTHROUGH"
 
 
 def _require_env(name: str) -> str:
@@ -57,6 +58,17 @@ def _configure_single_user_identity() -> None:
     """Use one Omnigent identity behind the Databricks App auth boundary."""
     os.environ["OMNIGENT_LOCAL_SINGLE_USER"] = "1"
     os.environ["OMNIGENT_AUTH_HEADER"] = LOCAL_AUTH_HEADER
+
+
+def _configure_runner_environment() -> None:
+    """Pass the deployment-owned App URL to Omnigent child runners."""
+    names = {
+        name.strip()
+        for name in os.getenv(RUNNER_ENV_PASSTHROUGH, "").split(",")
+        if name.strip()
+    }
+    names.add("LANGCHAIN_AGENT_URL")
+    os.environ[RUNNER_ENV_PASSTHROUGH] = ",".join(sorted(names))
 
 
 def _render_agent_bundle() -> pathlib.Path:
@@ -158,6 +170,7 @@ def main() -> None:
             client,
             "LANGCHAIN_AGENT_APP_NAME",
         )
+        _configure_runner_environment()
         agent_bundle = _render_agent_bundle()
 
         port = os.getenv("DATABRICKS_APP_PORT", "8000")
