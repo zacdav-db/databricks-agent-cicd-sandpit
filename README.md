@@ -139,34 +139,59 @@ The custom MCP has no outbound agent dependency: LangChain is its client.
 
 [Runtime architecture and governance details](docs/architecture/runtime-example.md)
 
-### GitHub Actions and promotion
+### How a change reaches production
 
-CI/CD is a branch promotion flow. Production is reachable only from the
-repository's `dev` branch.
+Pull requests validate code but never deploy it. A merge to `dev` releases the
+changed units to the development namespace. Only that successfully tested
+`dev` branch can open the promotion pull request to `main`; merging it releases
+the same repository state to the production namespace.
 
 ```mermaid
-flowchart TB
-    Feature["Feature branch"]
-    DevPR["PR to dev"]
-    DevGate["PR + quality"]
-    Dev["dev"]
-    DevSelect{"Changed deployment unit"}
-    DevAgent["Deploy + Gateway-verify changed Agent DAB"]
-    DevCore["Deploy changed runtime App DAB"]
-    ProdPR["PR: dev to main"]
-    ProdGate["Source check + quality"]
-    Main["main"]
-    ProdSelect{"Changed deployment unit"}
-    ProdAgent["Deploy + Gateway-verify changed Agent DAB"]
-    ProdCore["Deploy changed runtime App DAB"]
+flowchart LR
+    Change["Change an agent or runtime App"]
 
-    Feature --> DevPR --> DevGate --> Dev --> DevSelect
-    DevSelect --> DevAgent
-    DevSelect --> DevCore
-    Dev --> ProdPR --> ProdGate --> Main --> ProdSelect
-    ProdSelect --> ProdAgent
-    ProdSelect --> ProdCore
+    subgraph Review["Review"]
+        DevPR["Pull request to dev"]
+        Quality["Compose, lint, test,<br/>resolve Linux dependencies"]
+    end
+
+    subgraph Development["Development release"]
+        DevCommit["Merge to dev"]
+        DevSelect{"Which deployment<br/>units changed?"}
+        DevRelease["For each selected unit:<br/>validate DAB → deploy → start"]
+        DevProof["Read back Gateway registration<br/>and smoke streaming + traces"]
+    end
+
+    subgraph Promotion["Production guard"]
+        ProdPR["Pull request<br/>dev → main"]
+        SourceGuard["Require repository dev as source<br/>and repeat quality gate"]
+    end
+
+    subgraph Production["Production release"]
+        MainCommit["Merge the reviewed repository state<br/>to main"]
+        ProdSelect{"Select units in the<br/>promoted commit range"}
+        ProdRelease["For each selected unit:<br/>validate DAB → deploy → start"]
+        ProdProof["Read back Gateway registration<br/>and smoke streaming + traces"]
+    end
+
+    Change --> DevPR --> Quality
+    Quality -->|"merge"| DevCommit
+    DevCommit --> DevSelect --> DevRelease --> DevProof
+    DevProof --> ProdPR --> SourceGuard
+    SourceGuard -->|"merge reviewed state"| MainCommit
+    MainCommit --> ProdSelect --> ProdRelease --> ProdProof
 ```
+
+This separates three concerns:
+
+- **Quality:** every pull request composes all agent definitions and runs the
+  platform checks without workspace credentials.
+- **Scope:** a path selector maps the commit range to independent DABs. A
+  change inside one agent folder does not plan, restart, or redeploy its
+  siblings; documentation-only changes deploy nothing.
+- **Promotion:** production has no feature-branch or manual-dispatch route.
+  GitHub verifies both the `dev → main` pull request and its merged commit
+  before production credentials are available.
 
 [CI/CD, authentication, runner, and isolation details](docs/architecture/cicd.md)
 
