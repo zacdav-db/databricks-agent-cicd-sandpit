@@ -64,12 +64,13 @@ printf 'Deploying only %s to %s\n' "${component}" "${target}"
   databricks bundle run "${resource_key}" "${bundle_args[@]}"
 )
 
-if [[ "${component}" == "langchain" ]]; then
-  printf 'Registering only the LangChain App in Unity Catalog\n'
+if [[ "${component}" == "langchain" || "${component}" == "omnigent" ]]; then
+  printf 'Registering only the %s App in Unity AI Gateway\n' "${component}"
   "${python_bin}" scripts/register_uc_agent.py \
     --target "${target}" \
     --catalog "${UC_CATALOG}" \
-    --schema "${UC_SCHEMA}"
+    --schema "${UC_SCHEMA}" \
+    --runtime-agent "${component}"
 fi
 
 printf 'Smoke testing only %s\n' "${component}"

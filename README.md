@@ -10,8 +10,10 @@ with
 This repository is an example of how teams can:
 
 - Build agents on Databricks, deploy them through Databricks Apps, and register
-  the deployed agents and governed tools in
-  [Unity Catalog](https://docs.databricks.com/aws/en/data-governance/unity-catalog/).
+  every deployed agent in
+  [Unity AI Gateway](https://docs.databricks.com/aws/en/ai-gateway/) as a
+  governed
+  [Unity Catalog Agent Service](https://docs.databricks.com/aws/en/ai-gateway/agent-services).
 - Promote applications and agents through a protected dev-to-prod process
   using GitHub Actions and DABs.
 - Offer a centrally managed deployment path where authors add a small agent
@@ -123,13 +125,13 @@ flowchart TB
     DevGate["PR + quality"]
     Dev["dev"]
     DevSelect{"Changed deployment unit"}
-    DevAgent["Deploy changed Agent DAB"]
+    DevAgent["Deploy + Gateway-verify changed Agent DAB"]
     DevCore["Deploy changed runtime App DAB"]
     ProdPR["PR: dev to main"]
     ProdGate["Source check + quality"]
     Main["main"]
     ProdSelect{"Changed deployment unit"}
-    ProdAgent["Deploy changed Agent DAB"]
+    ProdAgent["Deploy + Gateway-verify changed Agent DAB"]
     ProdCore["Deploy changed runtime App DAB"]
 
     Feature --> DevPR --> DevGate --> Dev --> DevSelect
@@ -155,13 +157,15 @@ flowchart LR
     Composer["Validate and compose"]
     Generated["Generated App + dedicated DAB state"]
     Dev["dev App"]
+    DevGateway["dev Gateway Agent Service"]
     Prod["prod App"]
+    ProdGateway["prod Gateway Agent Service"]
 
     Folder --> Composer
     Platform --> Composer
     Composer --> Generated
-    Generated --> Dev
-    Generated --> Prod
+    Generated --> Dev --> DevGateway
+    Generated --> Prod --> ProdGateway
 ```
 
 [Contract, generated runtime, and validation details](docs/architecture/folder-defined-agents.md)
@@ -185,9 +189,11 @@ schemas, functions, experiments, trace tables,
 [Agent Services in Unity Catalog](https://docs.databricks.com/aws/en/ai-gateway/agent-services),
 and bundle paths.
 
-[Unity AI Gateway](https://docs.databricks.com/aws/en/ai-gateway/) provides the
-broader governance and monitoring surface for Apps, model endpoints, MCP
-servers, and agents.
+Every LangChain, Omnigent, and folder-defined agent App is registered in
+[Unity AI Gateway](https://docs.databricks.com/aws/en/ai-gateway/) after its
+DAB deploys. CI reads the Agent Service and grants back from the API and fails
+the deployment unless the App connection, base path, `EXECUTE`, and
+`READ_METADATA` match the platform contract.
 
 ## Repository map
 

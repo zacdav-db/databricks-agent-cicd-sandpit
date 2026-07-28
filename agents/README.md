@@ -37,8 +37,9 @@ is resolved to the `MODEL_ENDPOINT` environment variable.
 
 The platform owns FastAPI, routes, health checks, authentication, model
 binding, MLflow tracing, the trace experiment, permissions, target naming,
-and DAB generation. Authors cannot provide raw environment variables,
-resource grants, commands, or DAB fragments.
+DAB generation, and mandatory Unity AI Gateway Agent Service registration.
+Authors cannot provide raw environment variables, resource grants, commands,
+or DAB fragments.
 
 ## Examples
 

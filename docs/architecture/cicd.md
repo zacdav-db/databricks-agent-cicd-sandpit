@@ -10,12 +10,12 @@ flowchart TB
     DevGate["PR + quality gate"]
     Dev["dev branch"]
     DevSelect{"Path selector"}
-    DevUnit["Deploy + smoke changed unit only"]
+    DevUnit["Deploy + Gateway verify + smoke changed unit only"]
     ProdPR["Pull request: dev to main"]
     ProdGate["Source check + quality gate"]
     Main["main branch"]
     ProdSelect{"Path selector"}
-    ProdUnit["Deploy + smoke changed unit only"]
+    ProdUnit["Deploy + Gateway verify + smoke changed unit only"]
 
     Feature --> DevPR --> DevGate --> Dev --> DevSelect --> DevUnit
     Dev --> ProdPR --> ProdGate --> Main --> ProdSelect --> ProdUnit
@@ -50,8 +50,10 @@ A merged pull request pushes to `dev`. GitHub Actions then:
    deployable unit changed.
 3. Builds a short-lived deployment wheelhouse only for a deployable change.
 4. Bootstraps `dev_agent_cicd` only when an App deployment is selected.
-5. Validates, deploys, starts, registers, and smoke-tests only the selected
-   unit.
+5. Validates, deploys, and starts only the selected unit.
+6. Registers each selected agent App in Unity AI Gateway, reads its Agent
+   Service and grants back, and fails closed on any mismatch.
+7. Invokes and trace-smoke-tests only the selected unit.
 
 An `agents/gemini-assistant/**` change deploys only the Gemini App. A change to
 the injected `agent_platform/**` intentionally deploys every folder-defined
@@ -77,10 +79,10 @@ remained `RUNNING`/`ACTIVE`.
 | [Production](https://github.com/zacdav-db/databricks-agent-cicd-sandpit/actions/runs/30329830112) | 3m 07s | 19s | 1m 37s |
 
 `Deploy and verify` includes target composition, DAB validation, App update,
-Unity Catalog Agent Service registration, an invocation, and confirmation that
-the invocation wrote an MLflow trace. A new App takes longer because Databricks
-must create and start its compute; these figures measure the representative
-update path for an already-running App.
+Unity AI Gateway Agent Service registration, an invocation, and confirmation
+that the invocation wrote an MLflow trace. A new App takes longer because
+Databricks must create and start its compute; these figures measure the
+representative update path for an already-running App.
 
 ## Production promotion
 

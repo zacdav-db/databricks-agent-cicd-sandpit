@@ -21,7 +21,7 @@ flowchart LR
     Managed["Managed Functions MCP"]
     Functions["Unity Catalog functions"]
     Model["Foundation Model API"]
-    Services["Unity Catalog Agent Services"]
+    Gateway["Unity AI Gateway<br/>UC Agent Services"]
     Traces[("Unity Catalog trace tables")]
 
     User --> Omni
@@ -34,8 +34,9 @@ flowchart LR
     Generated --> Model
     Agent --> Traces
     Generated --> Traces
-    Services -. "inventory" .-> Agent
-    Services -. "inventory" .-> Generated
+    Gateway -. "governed inventory" .-> Agent
+    Gateway -. "governed inventory" .-> Generated
+    Gateway -. "governed inventory" .-> Omni
 ```
 
 ## Components
@@ -47,7 +48,7 @@ flowchart LR
 | `*-sandpit-omnigent` | Omnigent supervisor that uses the custom MCP, a managed UC function, and approval policies. |
 | `*-agent-langchain-assistant` | Example App using LangChain through the folder-defined agent contract. |
 | Managed Functions MCP | Databricks-managed MCP surface over the target's Unity Catalog functions. |
-| Agent Services | Beta Unity Catalog inventory and permissions for the fixed and generated agent Apps. |
+| Unity AI Gateway | Governed Agent Service inventory and permissions for every agent App. |
 | Trace tables | Four governed OpenTelemetry tables backing the target's MLflow experiment. |
 
 ## Unity Catalog mapping
@@ -57,9 +58,13 @@ Each DAB maps its supported objects at the strongest level currently available:
 - The cost and current-time tools are three-level Unity Catalog `FUNCTION`
   securables. Agent Apps receive `EXECUTE` through DAB `uc_securable` bindings
   and discover them through managed Functions MCP endpoints.
-- The fixed LangChain App and every folder-defined agent are registered after
-  deployment as target-specific Unity Catalog Agent Services. The sandpit
-  owner receives `EXECUTE` and `READ_METADATA`.
+- The fixed LangChain App, Omnigent supervisor, and every folder-defined agent
+  are registered after deployment as target-specific Unity Catalog Agent
+  Services in Unity AI Gateway. The sandpit owner receives `EXECUTE` and
+  `READ_METADATA`.
+- Registration is fail-closed. CI reads the service and permission records
+  back and checks the expected App connection, base path, service type, and
+  grants before smoke testing the agent.
 - Agent Services currently provide beta inventory and permissions. Live
   traffic continues to use the DAB-deployed App endpoints.
 - The custom MCP remains a stateless Databricks App. Databricks does not
@@ -74,7 +79,7 @@ native App resources with two platform scripts:
 - `bootstrap_resources.py` creates the target schema, functions, and MLflow
   experiment before App bindings are deployed.
 - `register_uc_agent.py` uses `WorkspaceClient` and its authenticated API
-  client to reconcile the beta Agent Service resources.
+  client to reconcile and verify the beta Gateway Agent Service resources.
 
 See the Databricks documentation for
 [managed MCP servers](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp),
