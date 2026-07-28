@@ -251,7 +251,7 @@ and bundle paths.
 Every LangChain, Omnigent, and folder-defined agent App is registered in
 [Unity AI Gateway](https://docs.databricks.com/aws/en/ai-gateway/) after its
 DAB deploys. CI reads the Agent Service and grants back from the API and fails
-the deployment unless the App connection, base path, `EXECUTE`, and
+the deployment unless the App connection origin, base path, `EXECUTE`, and
 `READ_METADATA` match the platform contract.
 
 The fixed LangChain App and folder-defined Apps are MLflow ResponsesAgent

@@ -12,6 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_composer():
+    scripts_path = str(ROOT / "scripts")
+    if scripts_path not in sys.path:
+        sys.path.insert(0, scripts_path)
     name = "folder_agent_composer"
     spec = importlib.util.spec_from_file_location(
         name,

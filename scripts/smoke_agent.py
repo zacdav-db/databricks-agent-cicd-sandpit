@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 
+from app_names import generated_agent_app_name
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
 from register_uc_agent import (
@@ -53,7 +54,7 @@ def main() -> None:
     client = WorkspaceClient(
         config=Config(profile=args.profile, http_timeout_seconds=180),
     )
-    app_name = f"agent-{args.target}-{args.agent}"
+    app_name = generated_agent_app_name(args.target, args.agent)
     app_url = _wait_for_app(client, app_name)
     agent_info = _assert_playground_agent(client, app_name, app_url)
     gateway = verify_gateway_registration(
@@ -62,6 +63,7 @@ def main() -> None:
         schema=schema,
         registration=gateway_agent(args.target, agent=args.agent),
         principal=args.metadata_principal,
+        app_url=app_url,
     )
     _api_json(client, "GET", f"{app_url}/api/health")
     result = _responses_stream(

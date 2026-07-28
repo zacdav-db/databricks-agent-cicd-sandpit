@@ -185,10 +185,13 @@ endpoint, and GitHub credential environment. They do not share:
 Every target-specific resource has an explicit `dev` or `prod` prefix. The
 credential environments can be split later without changing the DAB contract.
 
-The first isolated deployment transfers any existing folder App from the
-former shared bundle state with DAB `deployment unbind` and `deployment bind`.
-The App UUID and running App are preserved; no delete or forced restart is
-used. Later deployments read and write only the agent's isolated state.
+The first isolated deployment transfers an existing same-named folder App from
+the former shared bundle state with DAB `deployment unbind` and
+`deployment bind`. That state-only transfer preserves the App UUID and does
+not restart or delete the App. The one-time `agent-` naming migration is
+different: CI creates the newly named App, verifies its Gateway connection,
+streaming response, and trace, then retires only the exact former name. Later
+deployments read and write only the agent's isolated state.
 
 ## Authentication and runners
 

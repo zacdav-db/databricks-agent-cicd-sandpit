@@ -8,7 +8,8 @@
 - `jq`
 - A valid `sandpit` profile
 - OAuth M2M credentials in `DATABRICKS_CLIENT_ID` and
-  `DATABRICKS_CLIENT_SECRET` when an Agent Service connection is first created
+  `DATABRICKS_CLIENT_SECRET` when an Agent Service connection is created or
+  updated for a replacement App URL
 
 ## Setup
 
@@ -51,7 +52,7 @@ The deployment is idempotent. It:
 4. Validates and deploys each selected DAB.
 5. Starts each selected unit.
 6. Registers every selected agent App in Unity AI Gateway and verifies its
-   Agent Service, connection, base path, and required grants.
+   Agent Service, connection origin, base path, and required grants.
 7. Smoke-tests each selected agent through the streaming Responses API,
    verifies its `agent-` name and `/agent/info` Playground contract, verifies
    its trace and provider child span, and checks other selected units. A

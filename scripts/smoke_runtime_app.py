@@ -8,6 +8,7 @@ import os
 import time
 from typing import Any
 
+from app_names import langchain_agent_app_name
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
 from register_uc_agent import (
@@ -57,7 +58,7 @@ def _smoke_langchain(
     warehouse_id: str,
     metadata_principal: str,
 ) -> dict[str, Any]:
-    app_name = f"agent-{target}-sandpit-langchain"
+    app_name = langchain_agent_app_name(target)
     url = _wait_for_app(client, app_name)
     agent_info = _assert_playground_agent(client, app_name, url)
     catalog = os.getenv("UC_CATALOG", "zacdav_sandpit_catalog")
@@ -68,6 +69,7 @@ def _smoke_langchain(
         schema=schema,
         registration=gateway_agent(target, runtime_agent="langchain"),
         principal=metadata_principal,
+        app_url=url,
     )
     _api_json(client, "GET", f"{url}/api/health")
     managed_result = _api_json(
@@ -197,6 +199,7 @@ def _smoke_omnigent(
         schema=schema,
         registration=gateway_agent(target, runtime_agent="omnigent"),
         principal=metadata_principal,
+        app_url=url,
     )
     _api_json(client, "GET", f"{url}/health")
     deadline = time.monotonic() + 120
