@@ -108,7 +108,7 @@ def test_compose_agents_is_deterministic_and_platform_owned(tmp_path: Path) -> N
     assert model["schema_name"] == "${var.schema}"
     assert model["grants"] == [
         {
-            "principal": "users",
+            "principal": "${var.model_user_principal}",
             "privileges": ["EXECUTE"],
         },
     ]

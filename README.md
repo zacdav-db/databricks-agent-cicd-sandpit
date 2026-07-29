@@ -81,7 +81,8 @@ signature, streaming flag, App dependency, and commit provenance. This makes
 the agent discoverable as a model in Unity Catalog and compatible with
 [AI Playground](https://docs.databricks.com/aws/en/large-language-models/ai-playground).
 Inference still runs on the Databricks App; no Model Serving endpoint is
-created.
+created. The DAB grants the configured sandpit user `EXECUTE` on the model;
+App `users` permissions remain a separate workspace-level control.
 
 The generated runtime also enables supported MLflow provider integrations
 before it imports the author module, so model calls become child spans without

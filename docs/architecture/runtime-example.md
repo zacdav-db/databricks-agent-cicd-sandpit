@@ -87,6 +87,9 @@ Each DAB maps its supported objects at the strongest level currently available:
   streaming enabled, and a `DatabricksApp` resource dependency. CI moves the
   `deployed` alias to that version and reads the artifact back before the
   deployment passes.
+- The model's DAB grant uses the configured account user rather than the
+  workspace-local `users` group, which Unity Catalog does not accept as a
+  principal in this sandpit.
 - The UC model is the governed, versioned discovery record. Its inference
   implementation delegates to the target-specific Databricks App, which
   remains the only serving runtime. No Model Serving endpoint is introduced.
