@@ -213,6 +213,7 @@ def test_registration_reuses_the_same_commit_and_updates_alias(
     )
     existing = SimpleNamespace(
         version="7",
+        status="READY",
         tags={
             "source_git_commit": "abc123",
             "databricks_app": registration.app_name,
@@ -226,6 +227,9 @@ def test_registration_reuses_the_same_commit_and_updates_alias(
 
         def search_model_versions(self, _filter: str) -> list[object]:
             return [existing]
+
+        def get_model_version(self, _name: str, _version: str) -> object:
+            return existing
 
         def set_model_version_tag(
             self,
@@ -281,3 +285,39 @@ def test_registration_reuses_the_same_commit_and_updates_alias(
         "deployed",
         "7",
     )
+
+
+def test_registration_ignores_interrupted_model_versions() -> None:
+    registration = register_uc_model.model_registration(
+        "dev",
+        git_sha="abc123",
+    )
+    pending = SimpleNamespace(
+        version="1",
+        status="PENDING_REGISTRATION",
+        tags={
+            "source_git_commit": registration.git_sha,
+            "databricks_app": registration.app_name,
+        },
+    )
+    ready = SimpleNamespace(
+        version="2",
+        status="READY",
+        tags=pending.tags,
+    )
+
+    class FakeClient:
+        def search_model_versions(self, _filter: str) -> list[object]:
+            return [
+                SimpleNamespace(version="1", tags=lambda: None),
+                SimpleNamespace(version="2", tags=lambda: None),
+            ]
+
+        def get_model_version(self, _name: str, version: str) -> object:
+            return {"1": pending, "2": ready}[version]
+
+    assert register_uc_model._matching_version(
+        FakeClient(),
+        "catalog.schema.model",
+        registration,
+    ) is ready

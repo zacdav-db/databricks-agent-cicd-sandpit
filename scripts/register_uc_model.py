@@ -75,16 +75,20 @@ def _matching_version(
     full_model_name: str,
     registration: ModelRegistration,
 ) -> Any | None:
-    versions = client.search_model_versions(f"name = '{full_model_name}'")
-    return next(
-        (
-            version
-            for version in versions
-            if (version.tags or {}).get("source_git_commit") == registration.git_sha
-            and (version.tags or {}).get("databricks_app") == registration.app_name
-        ),
-        None,
-    )
+    summaries = client.search_model_versions(f"name = '{full_model_name}'")
+    for summary in summaries:
+        version = client.get_model_version(
+            full_model_name,
+            str(summary.version),
+        )
+        tags = version.tags or {}
+        if (
+            version.status == "READY"
+            and tags.get("source_git_commit") == registration.git_sha
+            and tags.get("databricks_app") == registration.app_name
+        ):
+            return version
+    return None
 
 
 def _version_tags(registration: ModelRegistration) -> dict[str, str]:
