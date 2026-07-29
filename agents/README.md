@@ -62,9 +62,11 @@ Every composed App exposes the MLflow ResponsesAgent `/responses` and
 metadata and the `agent-` name before the App can be promoted. The App's DAB
 also owns its UC registered model; CI creates a commit-tagged MLflow model
 version, assigns the `deployed` alias, and verifies the ResponsesAgent
-signature and App dependency. This provides Unity Catalog and AI Playground
-discovery while inference continues to run on the App, without a Model Serving
-copy.
+signature and App dependency. This provides a versioned Unity Catalog release
+record while inference continues to run on the App, without a Model Serving
+copy. The callable identity used by Responses clients and AI Playground is
+`apps/<app-name>`; registering the UC model does not create that selector
+entry.
 
 ## Examples
 

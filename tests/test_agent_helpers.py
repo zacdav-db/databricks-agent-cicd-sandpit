@@ -263,9 +263,9 @@ def test_responses_stream_requires_deltas_done_event_and_trace() -> None:
     }
 
 
-def test_playground_agent_contract_requires_prefix_and_responses_metadata() -> None:
+def test_responses_agent_app_requires_prefix_and_metadata() -> None:
     module = _load(
-        "smoke_test_playground_contract",
+        "smoke_test_responses_agent_contract",
         ROOT / "scripts" / "smoke_test.py",
     )
 
@@ -297,11 +297,11 @@ def test_playground_agent_contract_requires_prefix_and_responses_metadata() -> N
         {"use_case": "agent", "agent_api": "chat_completions"},
     ],
 )
-def test_playground_agent_contract_rejects_invalid_metadata(
+def test_responses_agent_app_rejects_invalid_metadata(
     agent_info: dict[str, str],
 ) -> None:
     module = _load(
-        "smoke_test_invalid_playground_contract",
+        "smoke_test_invalid_responses_agent_contract",
         ROOT / "scripts" / "smoke_test.py",
     )
     client = SimpleNamespace(

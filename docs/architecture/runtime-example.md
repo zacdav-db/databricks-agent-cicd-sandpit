@@ -27,10 +27,11 @@ flowchart LR
     Traces[("Unity Catalog trace tables")]
 
     User --> Omni
-    Playground --> UCModels
+    Playground -->|"apps/agent-..."| Agent
+    Playground -->|"apps/agent-..."| Generated
     Omni -->|"direct App invocation"| Agent
-    UCModels -. "App-backed model" .-> Agent
-    UCModels -. "App-backed model" .-> Generated
+    UCModels -. "versioned release record" .-> Agent
+    UCModels -. "versioned release record" .-> Generated
     Agent -->|"custom tools"| MCP
     Agent -->|"governed tools"| Managed
     Managed -->|"execute"| Functions
@@ -79,7 +80,8 @@ Each DAB maps its supported objects at the strongest level currently available:
   event.
 - The fixed LangChain and folder-defined App names start with `agent-`. CI
   verifies `/agent/info` reports `use_case=agent` and
-  `agent_api=responses`, the App contract used by AI Playground.
+  `agent_api=responses`, the App contract used by Responses clients and AI
+  Playground when the workspace agent selector is enabled.
 - Each of those agent DABs also declares a native
   [`registered_models` resource](https://docs.databricks.com/aws/en/dev-tools/bundles/resources#registered-model)
   in its target schema. After the App smoke test succeeds, MLflow creates an
@@ -90,9 +92,10 @@ Each DAB maps its supported objects at the strongest level currently available:
 - The model's DAB grant uses the configured account user rather than the
   workspace-local `users` group, which Unity Catalog does not accept as a
   principal in this sandpit.
-- The UC model is the governed, versioned discovery record. Its inference
+- The UC model is the governed, versioned release record. Its inference
   implementation delegates to the target-specific Databricks App, which
-  remains the only serving runtime. No Model Serving endpoint is introduced.
+  remains the only serving runtime. A UC model is not an online Playground
+  endpoint, and no Model Serving endpoint is introduced.
 - The fixed LangChain App, Omnigent supervisor, and every folder-defined agent
   are registered after deployment as target-specific Unity Catalog Agent
   Services in Unity AI Gateway. The sandpit owner receives `EXECUTE` and
@@ -101,7 +104,9 @@ Each DAB maps its supported objects at the strongest level currently available:
   back and checks the expected App connection, base path, service type, and
   grants before smoke testing the agent.
 - Agent Services currently provide beta inventory and permissions. Live
-  traffic continues to use the DAB-deployed App endpoints.
+  traffic continues to use the DAB-deployed App endpoints. The current beta
+  does not support runtime invocation and therefore does not populate the
+  Playground selector.
 - The custom MCP remains a stateless Databricks App. Databricks does not
   currently support registering an App as a Unity Catalog MCP Service. Its
   App name starts with `mcp-`, as required for AI Playground discovery.
