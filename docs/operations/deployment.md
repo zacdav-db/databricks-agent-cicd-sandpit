@@ -55,7 +55,7 @@ The deployment is idempotent. It:
 6. Registers every selected agent App in Unity AI Gateway and verifies its
    Agent Service, connection origin, base path, and required grants.
 7. Smoke-tests each selected agent through the streaming Responses API,
-   verifies its `agent-` name and `/agent/info` Playground contract, verifies
+   verifies its `agent-` name and `/agent/info` Responses App contract, verifies
    its trace and provider child span, and checks other selected units. A
    runtime-App change also runs the end-to-end
    Omnigent → LangChain → custom MCP acceptance path without redeploying
