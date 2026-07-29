@@ -1,4 +1,4 @@
-"""Canonical target-specific Databricks App names."""
+"""Canonical target-specific names for deployed agent resources."""
 
 from __future__ import annotations
 
@@ -22,12 +22,30 @@ def generated_agent_app_template(agent_name: str) -> str:
     return f"agent-{RESOURCE_PREFIX_TEMPLATE}-{agent_name}"
 
 
+def generated_agent_model_name(target: str, agent_name: str) -> str:
+    agent_slug = agent_name.replace("-", "_")
+    return f"{_target(target)}_agent_{agent_slug}_model"
+
+
+def generated_agent_model_template(agent_name: str) -> str:
+    agent_slug = agent_name.replace("-", "_")
+    return f"{RESOURCE_PREFIX_TEMPLATE}_agent_{agent_slug}_model"
+
+
 def langchain_agent_app_name(target: str) -> str:
     return f"agent-{_target(target)}-sandpit-langchain"
 
 
 def langchain_agent_app_template() -> str:
     return f"agent-{RESOURCE_PREFIX_TEMPLATE}-sandpit-langchain"
+
+
+def langchain_agent_model_name(target: str) -> str:
+    return f"{_target(target)}_sandpit_langchain_agent_model"
+
+
+def langchain_agent_model_template() -> str:
+    return f"{RESOURCE_PREFIX_TEMPLATE}_sandpit_langchain_agent_model"
 
 
 def mcp_app_name(target: str) -> str:
@@ -64,7 +82,9 @@ def main() -> None:
         "kind",
         choices=(
             "generated",
+            "generated-model",
             "langchain",
+            "langchain-model",
             "legacy-generated",
             "legacy-langchain",
             "legacy-mcp",
@@ -76,12 +96,20 @@ def main() -> None:
     parser.add_argument("agent_name", nargs="?")
     args = parser.parse_args()
 
-    if args.kind in {"generated", "legacy-generated"} and not args.agent_name:
+    if args.kind in {
+        "generated",
+        "generated-model",
+        "legacy-generated",
+    } and not args.agent_name:
         parser.error(f"{args.kind} requires agent_name")
     if args.kind == "generated":
         value = generated_agent_app_name(args.target, args.agent_name)
+    elif args.kind == "generated-model":
+        value = generated_agent_model_name(args.target, args.agent_name)
     elif args.kind == "langchain":
         value = langchain_agent_app_name(args.target)
+    elif args.kind == "langchain-model":
+        value = langchain_agent_model_name(args.target)
     elif args.kind == "legacy-generated":
         value = legacy_generated_agent_app_name(args.target, args.agent_name)
     elif args.kind == "legacy-langchain":

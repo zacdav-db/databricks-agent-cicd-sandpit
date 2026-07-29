@@ -16,11 +16,13 @@ variables:
   uc_function_name: {}
   uc_time_function_name: {}
   custom_mcp_app_name: {}
+  model_user_principal:
+    default: zachary.davies@databricks.com
 
 targets:
   dev:
     default: true
-    mode: development
+    mode: production
     variables:
       resource_prefix: dev
       schema: dev_agent_cicd
@@ -45,6 +47,16 @@ targets:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
 
 resources:
+  registered_models:
+    langchain_agent_model:
+      name: ${var.resource_prefix}_sandpit_langchain_agent_model
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      comment: App-backed ResponsesAgent model; inference runs on the LangChain Databricks App.
+      grants:
+        - principal: ${var.model_user_principal}
+          privileges:
+            - EXECUTE
   apps:
     langchain_agent:
       name: agent-${var.resource_prefix}-sandpit-langchain
