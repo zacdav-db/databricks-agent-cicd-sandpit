@@ -399,6 +399,9 @@ def _bundle_config(agent: AgentDefinition) -> dict[str, Any]:
         "warehouse_id": {"default": "f7a871ffa2a9ab80"},
         "experiment_id": {},
         "trace_table_prefix": {},
+        "model_user_principal": {
+            "default": "zachary.davies@databricks.com",
+        },
     }
     targets = {
         target: {
@@ -442,7 +445,7 @@ def _bundle_config(agent: AgentDefinition) -> dict[str, Any]:
                     ),
                     "grants": [
                         {
-                            "principal": "users",
+                            "principal": "${var.model_user_principal}",
                             "privileges": ["EXECUTE"],
                         },
                     ],

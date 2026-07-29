@@ -16,6 +16,8 @@ variables:
   uc_function_name: {}
   uc_time_function_name: {}
   custom_mcp_app_name: {}
+  model_user_principal:
+    default: zachary.davies@databricks.com
 
 targets:
   dev:
@@ -52,7 +54,7 @@ resources:
       schema_name: ${var.schema}
       comment: App-backed ResponsesAgent model; inference runs on the LangChain Databricks App.
       grants:
-        - principal: users
+        - principal: ${var.model_user_principal}
           privileges:
             - EXECUTE
   apps:
