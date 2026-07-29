@@ -5,6 +5,7 @@ target="${1:?Usage: deploy_runtime_app.sh <dev|prod> <langchain|mcp|omnigent> <e
 component="${2:?Usage: deploy_runtime_app.sh <dev|prod> <langchain|mcp|omnigent> <experiment-id>}"
 experiment_id="${3:?Usage: deploy_runtime_app.sh <dev|prod> <langchain|mcp|omnigent> <experiment-id>}"
 python_bin="${PYTHON_BIN:-python}"
+git_sha="${GITHUB_SHA:-$(git rev-parse HEAD)}"
 
 case "${component}" in
   langchain)
@@ -84,3 +85,13 @@ printf 'Smoke testing only %s\n' "${component}"
   --target "${target}" \
   --app "${component}" \
   --warehouse-id "${DATABRICKS_WAREHOUSE_ID}"
+
+if [[ "${component}" == "langchain" ]]; then
+  printf 'Registering the LangChain App as a versioned Unity Catalog model\n'
+  "${python_bin}" scripts/register_uc_model.py \
+    --target "${target}" \
+    --catalog "${UC_CATALOG}" \
+    --schema "${UC_SCHEMA}" \
+    --experiment-id "${experiment_id}" \
+    --git-sha "${git_sha}"
+fi

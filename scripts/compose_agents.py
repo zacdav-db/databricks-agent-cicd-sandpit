@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from app_names import generated_agent_app_template
+from app_names import (
+    generated_agent_app_template,
+    generated_agent_model_template,
+)
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
@@ -86,6 +89,10 @@ class AgentDefinition:
     @property
     def resource_key(self) -> str:
         return f"generated_agent_{self.name.replace('-', '_')}"
+
+    @property
+    def model_resource_key(self) -> str:
+        return f"{self.resource_key}_model"
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -395,7 +402,7 @@ def _bundle_config(agent: AgentDefinition) -> dict[str, Any]:
     }
     targets = {
         target: {
-            "mode": "development" if target == "dev" else "production",
+            "mode": "production",
             "variables": {
                 "resource_prefix": target,
                 "schema": f"{target}_agent_cicd",
@@ -423,6 +430,23 @@ def _bundle_config(agent: AgentDefinition) -> dict[str, Any]:
         "resources": {
             "apps": {
                 agent.resource_key: _app_resource(agent),
+            },
+            "registered_models": {
+                agent.model_resource_key: {
+                    "name": generated_agent_model_template(agent.name),
+                    "catalog_name": "${var.catalog}",
+                    "schema_name": "${var.schema}",
+                    "comment": (
+                        f"App-backed ResponsesAgent model for {agent.name}; "
+                        "inference runs on its Databricks App."
+                    ),
+                    "grants": [
+                        {
+                            "principal": "users",
+                            "privileges": ["EXECUTE"],
+                        },
+                    ],
+                },
             },
         },
     }
@@ -538,14 +562,16 @@ def compose(root: Path) -> dict[str, Any]:
                 {
                     "name": agent.name,
                     "resource_key": agent.resource_key,
+                    "model_resource_key": agent.model_resource_key,
                     "app_name": generated_agent_app_template(agent.name),
+                    "model_name": generated_agent_model_template(agent.name),
                     "bundle_path": f".generated/bundles/{agent.name}",
                     "model_alias": agent.model_alias,
                     "model_endpoint": agent.model_endpoint,
                 },
             )
 
-        index = {"contract_version": 5, "agents": index_agents}
+        index = {"contract_version": 6, "agents": index_agents}
         (legacy_bundle_dir / "databricks.yml").write_text(
             yaml.safe_dump(_legacy_bundle_config(agents), sort_keys=False),
             encoding="utf-8",

@@ -53,14 +53,18 @@ is resolved to the `MODEL_ENDPOINT` environment variable.
 
 The platform owns FastAPI, routes, health checks, authentication, model
 binding, MLflow tracing, the trace experiment, permissions, target naming,
-DAB generation, and mandatory Unity AI Gateway Agent Service registration.
-Authors cannot provide raw environment variables, resource grants, commands,
-or DAB fragments.
+DAB generation, a versioned UC registered model, and mandatory Unity AI
+Gateway Agent Service registration. Authors cannot provide raw environment
+variables, resource grants, commands, or DAB fragments.
 
 Every composed App exposes the MLflow ResponsesAgent `/responses` and
 `/agent/info` surfaces. Deployment smoke tests require the ResponsesAgent
-metadata and the `agent-` name before the App can be promoted, so the same App
-can be selected from AI Playground without a Model Serving copy.
+metadata and the `agent-` name before the App can be promoted. The App's DAB
+also owns its UC registered model; CI creates a commit-tagged MLflow model
+version, assigns the `deployed` alias, and verifies the ResponsesAgent
+signature and App dependency. This provides Unity Catalog and AI Playground
+discovery while inference continues to run on the App, without a Model Serving
+copy.
 
 ## Examples
 

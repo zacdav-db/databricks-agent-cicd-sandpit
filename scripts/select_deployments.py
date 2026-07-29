@@ -8,10 +8,19 @@ import subprocess
 from pathlib import Path
 
 AGENT_PLATFORM_PATHS = (
-    "agent_platform/",
+    "agent_platform/_platform_tracing.py",
+    "agent_platform/policy.yaml",
+    "agent_platform/requirements.txt",
+    "agent_platform/runtime.py",
     "scripts/compose_agents.py",
 )
+AGENT_MODEL_PLATFORM_PATHS = (
+    "agent_platform/__init__.py",
+    "agent_platform/app_proxy_model.py",
+    "scripts/register_uc_model.py",
+)
 DEPLOYMENT_PLATFORM_PATHS = (
+    "requirements-deploy.txt",
     "scripts/app_names.py",
     "scripts/bootstrap_resources.py",
     "scripts/deploy_agent.sh",
@@ -57,6 +66,11 @@ def select_deployments(
         _matches(path, AGENT_PLATFORM_PATHS)
         for path in changed_paths
     )
+    deploy_all_agent_models = any(
+        _matches(path, AGENT_MODEL_PLATFORM_PATHS)
+        for path in changed_paths
+    )
+    deploy_all_agents = deploy_all_agents or deploy_all_agent_models
     selected_agents = known_agents if deploy_all_agents else {
         parts[1]
         for path in changed_paths
@@ -64,7 +78,7 @@ def select_deployments(
         and parts[0] == "agents"
         and parts[1] in known_agents
     }
-    selected_apps = (
+    selected_apps: list[str] = (
         list(RUNTIME_APP_ORDER)
         if deploy_all_units
         else [
@@ -76,6 +90,9 @@ def select_deployments(
             )
         ]
     )
+    if deploy_all_agent_models and "langchain" not in selected_apps:
+        selected_apps.append("langchain")
+        selected_apps.sort(key=RUNTIME_APP_ORDER.index)
     return {
         "apps": selected_apps,
         "agents": sorted(selected_agents),

@@ -1,4 +1,7 @@
+cloudpickle>=3,<4
 databricks-sdk==0.122.0
-mlflow-skinny>=3.14.0,<4
+mlflow-skinny==3.14.0
+numpy>=1.26,<3
 packaging>=24,<26
+pandas>=2,<3
 pyyaml>=6,<7

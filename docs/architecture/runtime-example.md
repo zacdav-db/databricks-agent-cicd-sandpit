@@ -14,6 +14,7 @@ roots, and trace tables.
 ```mermaid
 flowchart LR
     User["User or API client"]
+    Playground["AI Playground"]
     Omni["Omnigent App"]
     MCP["Custom MCP App<br/>(standalone tool server)"]
     Agent["LangChain App<br/>Responses API + SSE"]
@@ -21,11 +22,15 @@ flowchart LR
     Managed["Managed Functions MCP"]
     Functions["Unity Catalog functions"]
     Model["Foundation Model API"]
+    UCModels["Unity Catalog<br/>ResponsesAgent models"]
     Gateway["Unity AI Gateway<br/>UC Agent Services"]
     Traces[("Unity Catalog trace tables")]
 
     User --> Omni
+    Playground --> UCModels
     Omni -->|"direct App invocation"| Agent
+    UCModels -. "App-backed model" .-> Agent
+    UCModels -. "App-backed model" .-> Generated
     Agent -->|"custom tools"| MCP
     Agent -->|"governed tools"| Managed
     Managed -->|"execute"| Functions
@@ -49,6 +54,7 @@ flowchart LR
 | `agent-*-langchain-assistant` | Example ResponsesAgent App using LangChain through the folder-defined agent contract. |
 | Managed Functions MCP | Databricks-managed MCP surface over the target's Unity Catalog functions. |
 | Unity AI Gateway | Governed Agent Service inventory and permissions for every agent App. |
+| UC registered models | Versioned ResponsesAgent signatures and App dependencies for the fixed LangChain and folder-defined agents. |
 | Trace tables | Four governed OpenTelemetry tables backing the target's MLflow experiment. |
 
 ## Unity Catalog mapping
@@ -73,9 +79,17 @@ Each DAB maps its supported objects at the strongest level currently available:
   event.
 - The fixed LangChain and folder-defined App names start with `agent-`. CI
   verifies `/agent/info` reports `use_case=agent` and
-  `agent_api=responses`, the App contract used by AI Playground. These Apps
-  remain Databricks Apps; no UC registered model or Model Serving endpoint is
-  introduced.
+  `agent_api=responses`, the App contract used by AI Playground.
+- Each of those agent DABs also declares a native
+  [`registered_models` resource](https://docs.databricks.com/aws/en/dev-tools/bundles/resources#registered-model)
+  in its target schema. After the App smoke test succeeds, MLflow creates an
+  idempotent model version with the standard ResponsesAgent signature,
+  streaming enabled, and a `DatabricksApp` resource dependency. CI moves the
+  `deployed` alias to that version and reads the artifact back before the
+  deployment passes.
+- The UC model is the governed, versioned discovery record. Its inference
+  implementation delegates to the target-specific Databricks App, which
+  remains the only serving runtime. No Model Serving endpoint is introduced.
 - The fixed LangChain App, Omnigent supervisor, and every folder-defined agent
   are registered after deployment as target-specific Unity Catalog Agent
   Services in Unity AI Gateway. The sandpit owner receives `EXECUTE` and
@@ -91,19 +105,24 @@ Each DAB maps its supported objects at the strongest level currently available:
 - Trace data is governed in Unity Catalog rather than written to a shared,
   cross-target table.
 
-DAB CLI `1.7.x` has no first-class resource types for UC functions, HTTP
-connections, Agent Services, or MCP Services. Deployment therefore combines
-native App resources with two platform scripts:
+DAB CLI `1.7.x` provides first-class App and UC registered-model resources,
+but not resource types for UC functions, HTTP connections, Agent Services, or
+MCP Services. Deployment therefore combines native DAB resources with three
+platform scripts:
 
 - `bootstrap_resources.py` creates the target schema, functions, and MLflow
   experiment before App bindings are deployed.
 - `register_uc_agent.py` uses `WorkspaceClient` and its authenticated API
   client to reconcile and verify the beta Gateway Agent Service resources.
+- `register_uc_model.py` uses MLflow to create or reuse the commit's model
+  version, assign its `deployed` alias, and verify its ResponsesAgent signature
+  and App dependency.
 
 See the Databricks documentation for
 [hosting custom MCP servers as Apps](https://docs.databricks.com/aws/en/agents/mcp/custom-mcp),
 [managed MCP servers](https://docs.databricks.com/aws/en/agents/mcp/managed-mcp),
 [Agent Services](https://docs.databricks.com/aws/en/ai-gateway/agent-services),
+[models in Unity Catalog](https://docs.databricks.com/aws/en/machine-learning/manage-model-lifecycle/),
 and
 [MCP Service limitations](https://docs.databricks.com/aws/en/agents/mcp/mcp-services).
 The streaming route follows Databricks'

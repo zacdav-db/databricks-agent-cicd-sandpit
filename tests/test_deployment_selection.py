@@ -52,6 +52,16 @@ def test_platform_change_fans_out_only_to_folder_agents() -> None:
     }
 
 
+def test_model_registration_change_selects_only_agent_apps() -> None:
+    assert select_deployments(
+        ["scripts/register_uc_model.py"],
+        AGENTS,
+    ) == {
+        "apps": ["langchain"],
+        "agents": AGENTS,
+    }
+
+
 def test_runtime_app_change_selects_only_that_app() -> None:
     assert select_deployments(
         ["src/mcp_server/server.py"],
@@ -65,6 +75,7 @@ def test_runtime_app_change_selects_only_that_app() -> None:
 @pytest.mark.parametrize(
     "path",
     [
+        "requirements-deploy.txt",
         "scripts/bootstrap_resources.py",
         "scripts/migrate_app_bundle.sh",
         "scripts/select_deployments.py",
