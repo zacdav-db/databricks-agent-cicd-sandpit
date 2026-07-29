@@ -6,6 +6,7 @@ agent_name="${2:?Usage: deploy_agent.sh <dev|prod> <agent-name> <experiment-id>}
 experiment_id="${3:?Usage: deploy_agent.sh <dev|prod> <agent-name> <experiment-id>}"
 python_bin="${PYTHON_BIN:-python}"
 bundle_dir=".generated/bundles/${agent_name}"
+git_sha="${GITHUB_SHA:-$(git rev-parse HEAD)}"
 
 if [[ "${target}" != "dev" && "${target}" != "prod" ]]; then
   echo "Target must be dev or prod." >&2
@@ -64,3 +65,12 @@ printf 'Smoke testing only %s\n' "${agent_name}"
   --target "${target}" \
   --agent "${agent_name}" \
   --warehouse-id "${DATABRICKS_WAREHOUSE_ID}"
+
+printf 'Registering only %s as a versioned Unity Catalog model\n' "${agent_name}"
+"${python_bin}" scripts/register_uc_model.py \
+  --target "${target}" \
+  --catalog "${UC_CATALOG}" \
+  --schema "${UC_SCHEMA}" \
+  --experiment-id "${experiment_id}" \
+  --git-sha "${git_sha}" \
+  --agent "${agent_name}"

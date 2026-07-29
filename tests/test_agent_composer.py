@@ -79,8 +79,11 @@ def test_compose_agents_is_deterministic_and_platform_owned(tmp_path: Path) -> N
     assert git_marker.read_text(encoding="utf-8") == "repository metadata"
     assert (root / "agents/small-agent/agent.py").is_file()
     assert (root / "agents/small-agent/agent.py").read_bytes() == author_source
-    assert index["contract_version"] == 5
+    assert index["contract_version"] == 6
     assert index["agents"][0]["resource_key"] == "generated_agent_small_agent"
+    assert index["agents"][0]["model_resource_key"] == (
+        "generated_agent_small_agent_model"
+    )
     assert index["agents"][0]["bundle_path"] == (
         ".generated/bundles/small-agent"
     )
@@ -91,10 +94,26 @@ def test_compose_agents_is_deterministic_and_platform_owned(tmp_path: Path) -> N
         "/Workspace/Users/${workspace.current_user.userName}"
         "/.bundle/${bundle.name}/${bundle.target}"
     )
+    assert bundle["targets"]["dev"]["mode"] == "production"
     app = bundle["resources"]["apps"]["generated_agent_small_agent"]
     assert app["name"] == "agent-${var.resource_prefix}-small-agent"
     assert index["agents"][0]["app_name"] == (
         "agent-${var.resource_prefix}-small-agent"
+    )
+    model = bundle["resources"]["registered_models"][
+        "generated_agent_small_agent_model"
+    ]
+    assert model["name"] == "${var.resource_prefix}_agent_small_agent_model"
+    assert model["catalog_name"] == "${var.catalog}"
+    assert model["schema_name"] == "${var.schema}"
+    assert model["grants"] == [
+        {
+            "principal": "users",
+            "privileges": ["EXECUTE"],
+        },
+    ]
+    assert index["agents"][0]["model_name"] == (
+        "${var.resource_prefix}_agent_small_agent_model"
     )
     assert app["source_code_path"] == "./app"
     assert app["config"]["command"][1] == "_agent_runtime:app"
@@ -293,6 +312,18 @@ def test_every_app_has_one_unique_bundle_state() -> None:
     assert len(bundle_names) == 7
     assert len(set(bundle_names)) == len(bundle_names)
     assert all(len(bundle["resources"]["apps"]) == 1 for bundle in bundles)
+    agent_bundles = [
+        bundle
+        for bundle in bundles
+        if next(iter(bundle["resources"]["apps"].values()))["name"].startswith(
+            "agent-",
+        )
+    ]
+    assert len(agent_bundles) == 5
+    assert all(
+        len(bundle["resources"]["registered_models"]) == 1
+        for bundle in agent_bundles
+    )
     assert all(
         next(iter(bundle["resources"]["apps"].values()))["name"].startswith(
             ("agent-", "mcp-", "${var.resource_prefix}-sandpit-omnigent"),

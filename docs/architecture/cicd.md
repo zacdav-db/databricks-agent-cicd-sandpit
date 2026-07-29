@@ -18,7 +18,7 @@ flowchart LR
         DevSelect{"Path selector"}
         DevNoop["No deployable change<br/>stop here"]
         DevUnit["Selected unit only<br/>DAB deploy + start"]
-        DevVerify["Gateway read-back<br/>stream + trace smoke"]
+        DevVerify["Gateway + UC model read-back<br/>stream + trace smoke"]
     end
 
     subgraph Guard["Promotion boundary"]
@@ -31,7 +31,7 @@ flowchart LR
         MainPush["Verified promotion merge"]
         ProdSelect{"Path selector"}
         ProdUnit["Selected unit only<br/>DAB deploy + start"]
-        ProdVerify["Gateway read-back<br/>stream + trace smoke"]
+        ProdVerify["Gateway + UC model read-back<br/>stream + trace smoke"]
     end
 
     Feature --> DevPR --> Quality -->|"merge"| DevPush --> DevSelect
@@ -45,7 +45,8 @@ flowchart LR
 The important unit of promotion is the reviewed repository state, not a
 separately rebuilt source snapshot. The `dev` and `main` deployments compose
 from their protected-branch commits and apply target-specific names, schemas,
-experiments, trace tables, Gateway objects, and DAB state.
+experiments, trace tables, UC registered models, Gateway objects, and DAB
+state.
 
 | Repository event | Workspace effect |
 | --- | --- |
@@ -57,10 +58,13 @@ experiments, trace tables, Gateway objects, and DAB state.
 For a selected unit, “deployed” means the complete transaction succeeds:
 
 1. Validate its independently stateful DAB.
-2. Deploy and start only that App.
+2. Deploy its App and UC registered-model securable, then start only that App.
 3. Register the agent and read its Unity AI Gateway configuration and grants
    back.
 4. Exercise the streaming Responses API and confirm the trace is queryable.
+5. Create or reuse the commit's MLflow model version, move the `deployed`
+   alias, and verify its ResponsesAgent signature, streaming flag, App
+   dependency, and provenance tags.
 
 Failure at any step fails the environment release and prevents the workflow
 from describing the unit as promoted.
@@ -100,6 +104,8 @@ A merged pull request pushes to `dev`. GitHub Actions then:
 7. Smoke-tests the selected unit. For any runtime-App change, it also exercises
    the complete Omnigent → LangChain → custom MCP path without redeploying
    unchanged consumers.
+8. Registers each healthy selected ResponsesAgent as a versioned UC model and
+   verifies its `deployed` alias and model artifact.
 
 An `agents/gemini-assistant/**` change deploys only the Gemini App. A change to
 the injected `agent_platform/**` intentionally deploys every folder-defined
@@ -126,9 +132,10 @@ remained `RUNNING`/`ACTIVE`.
 
 `Deploy and verify` includes target composition, DAB validation, App update,
 Unity AI Gateway Agent Service registration, an invocation, and confirmation
-that the invocation wrote an MLflow trace. A new App takes longer because
-Databricks must create and start its compute; these figures measure the
-representative update path for an already-running App.
+that the invocation wrote an MLflow trace. These historical measurements
+predate UC model-version registration; a current deployment additionally logs
+and verifies one small App-backed MLflow artifact. A new App takes longer
+because Databricks must create and start its compute.
 
 ## Production promotion
 
@@ -143,8 +150,9 @@ manual-dispatch production path.
 ## App and target isolation
 
 Each folder-defined agent has a complete generated DAB with a unique
-`bundle.name` and workspace root. Its state contains exactly one App. Selecting
-one agent therefore cannot plan, update, restart, or delete a sibling App.
+`bundle.name` and workspace root. Its state contains exactly one App and its
+UC registered model. Selecting one agent therefore cannot plan, update,
+restart, or delete a sibling App or model.
 
 The LangChain, MCP, and Omnigent Apps also have one bundle each. LangChain
 references the custom MCP by target-specific App name, and Omnigent references
@@ -184,6 +192,10 @@ endpoint, and GitHub credential environment. They do not share:
 
 Every target-specific resource has an explicit `dev` or `prod` prefix. The
 credential environments can be split later without changing the DAB contract.
+Agent bundles use DAB production mode for both shared CI targets so the
+development registered-model names remain deterministic and are not given
+DAB's per-developer `[dev <user>]` prefix. Environment isolation still comes
+from the target, schema, bundle root, and explicit `dev`/`prod` resource names.
 
 The first isolated deployment transfers an existing same-named folder App from
 the former shared bundle state with DAB `deployment unbind` and

@@ -50,7 +50,8 @@ The deployment is idempotent. It:
    Existing functions are preserved so an isolated App deployment cannot
    discard the App identity grants attached to them.
 4. Validates and deploys each selected DAB.
-5. Starts each selected unit.
+5. Starts each selected unit. Agent DABs also create the target-specific
+   [Unity Catalog registered-model securable](https://docs.databricks.com/aws/en/dev-tools/bundles/resources#registered-model).
 6. Registers every selected agent App in Unity AI Gateway and verifies its
    Agent Service, connection origin, base path, and required grants.
 7. Smoke-tests each selected agent through the streaming Responses API,
@@ -59,7 +60,10 @@ The deployment is idempotent. It:
    runtime-App change also runs the end-to-end
    Omnigent → LangChain → custom MCP acceptance path without redeploying
    unchanged consumers.
-8. After a renamed App passes its smoke test, retires only its exact legacy
+8. Registers a commit-tagged MLflow ResponsesAgent model version for each
+   healthy selected agent, moves its `deployed` alias, and reads back its
+   signature, streaming flag, App dependency, and provenance tags.
+9. After a renamed App passes its smoke test, retires only its exact legacy
    App name if it exists.
 
 When all runtime Apps are selected, they deploy in dependency order:
@@ -90,6 +94,10 @@ databricks apps logs agent-dev-sandpit-langchain -p sandpit
 databricks apps logs mcp-dev-sandpit-tools -p sandpit
 databricks apps logs dev-sandpit-omnigent -p sandpit
 databricks apps logs agent-dev-langchain-assistant -p sandpit
+
+databricks registered-models get \
+  zacdav_sandpit_catalog.dev_agent_cicd.dev_agent_langchain_assistant_model \
+  -p sandpit
 ```
 
 Query a deployed agent with the Databricks OpenAI client:

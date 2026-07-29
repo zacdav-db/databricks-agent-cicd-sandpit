@@ -11,18 +11,24 @@ flowchart LR
     Policy["Platform policy<br/>model aliases"]
     Runtime["Platform runtime<br/>HTTP + tracing"]
     Composer["Validate and compose"]
-    Generated["Generated App source<br/>and dedicated DAB state"]
+    Generated["Generated App source + UC model<br/>and dedicated DAB state"]
     Dev["dev App"]
+    DevModel["dev UC model @deployed"]
     DevGateway["dev Gateway Agent Service"]
     Prod["prod App"]
+    ProdModel["prod UC model @deployed"]
     ProdGateway["prod Gateway Agent Service"]
 
     Folder --> Composer
     Policy --> Composer
     Runtime --> Composer
     Composer --> Generated
-    Generated --> Dev --> DevGateway
-    Generated --> Prod --> ProdGateway
+    Generated --> Dev
+    Dev --> DevModel
+    Dev --> DevGateway
+    Generated --> Prod
+    Prod --> ProdModel
+    Prod --> ProdGateway
 ```
 
 The generated output is rebuilt before DAB validation and deployment. It is
@@ -125,7 +131,7 @@ and
 1. Copies the validated author source.
 2. Injects the platform FastAPI runtime.
 3. Combines the exact-pinned platform and author dependencies.
-4. Emits a deterministic, single-App DAB.
+4. Emits a deterministic DAB containing one App and one UC registered model.
 5. Gives the App a unique bundle name and workspace state root.
 6. Records the deployment unit in an index consumed by selection,
    registration, and focused smoke tests.
@@ -141,7 +147,8 @@ The platform owns:
 - Target-specific experiment, warehouse, and Unity Catalog trace bindings.
 - App commands, names, identities, permissions, model grants, and DAB shape.
 - Dev/prod startup, mandatory Unity AI Gateway Agent Service registration,
-  read-back verification, and acceptance testing.
+  versioned MLflow model registration in Unity Catalog, read-back
+  verification, and acceptance testing.
 
 The tracing bootstrap runs before the author module is imported. It enables
 the installed LangChain, OpenAI, Anthropic, and Gemini MLflow integrations;
@@ -168,10 +175,10 @@ Every folder gets a self-contained generated directory:
 └── app/
 ```
 
-That bundle contains one App and has a unique `bundle.name`. CI maps changed
-paths to these bundle directories, so an agent-only pull request reconciles
-only its own App. It does not restart sibling compute or depend on sibling
-smoke tests.
+That bundle contains one App and its matching UC registered model and has a
+unique `bundle.name`. CI maps changed paths to these bundle directories, so an
+agent-only pull request reconciles only its own App and model. It does not
+restart sibling compute or depend on sibling smoke tests.
 
 Shared runtime or model-policy changes are different by design: because their
 generated output affects every folder, CI fans out across all agent bundles
@@ -196,16 +203,18 @@ The contract is intentionally strict. CI rejects:
 
 Dependency resolution is tested for Linux/Python 3.11 with binary wheels only.
 After deployment, CI verifies the App's Gateway Agent Service and grants,
-invokes the App, and waits until its trace is queryable in the target's Unity
-Catalog spans table.
+invokes the App, waits until its trace is queryable in the target's Unity
+Catalog spans table, then registers and reads back the commit-tagged MLflow
+model version and its `deployed` alias.
 
 ## Design boundaries
 
 This is trusted-contributor Python, not a sandbox for untrusted code. Agent
 code runs with its App identity and can use whatever that identity is granted.
 
-One folder creates one App identity, DAB state, deployment unit, and scaling
-boundary. The Python may still coordinate several logical subagents internally.
+One folder creates one App identity, one UC registered model, DAB state,
+deployment unit, and scaling boundary. The Python may still coordinate
+several logical subagents internally.
 
 The platform remains in this repository so the contract, runtime, DAB
 composition, and deployment logic change atomically. Once stable, the

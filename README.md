@@ -10,7 +10,9 @@ with
 This repository is an example of how teams can:
 
 - Build agents on Databricks, deploy them through Databricks Apps, and register
-  every deployed agent in
+  every deployed agent both as a versioned
+  [Unity Catalog model](https://docs.databricks.com/aws/en/machine-learning/manage-model-lifecycle/)
+  and in
   [Unity AI Gateway](https://docs.databricks.com/aws/en/ai-gateway/) as a
   governed
   [Unity Catalog Agent Service](https://docs.databricks.com/aws/en/ai-gateway/agent-services).
@@ -71,10 +73,15 @@ Events as the underlying implementation produces tokens. The original
 ResponsesAgent App names begin with `agent-`, matching the
 [Databricks Apps agent convention](https://docs.databricks.com/aws/en/getting-started/gen-ai-llm-agent#step-3-export-your-agent).
 CI also reads `/agent/info` and requires the `responses` agent API before a
-deployment succeeds. This makes the deployed Apps directly compatible with
-[AI Playground](https://docs.databricks.com/aws/en/large-language-models/ai-playground);
-the repository does not create a registered UC model or a Model Serving
-endpoint.
+deployment succeeds. Each agent DAB also owns a
+[registered model resource](https://docs.databricks.com/aws/en/dev-tools/bundles/resources#registered-model).
+After the App passes its smoke test, CI logs an MLflow ResponsesAgent model
+version, points its `deployed` alias at that version, and verifies its standard
+signature, streaming flag, App dependency, and commit provenance. This makes
+the agent discoverable as a model in Unity Catalog and compatible with
+[AI Playground](https://docs.databricks.com/aws/en/large-language-models/ai-playground).
+Inference still runs on the Databricks App; no Model Serving endpoint is
+created.
 
 The generated runtime also enables supported MLflow provider integrations
 before it imports the author module, so model calls become child spans without
@@ -125,16 +132,20 @@ delegation.
 ```mermaid
 flowchart LR
     User["User"]
+    Playground["AI Playground"]
     Omni["Omnigent App"]
     MCP["Custom MCP App<br/>(standalone tool server)"]
     Agent["LangChain App<br/>Responses API + streaming"]
     Managed["Managed Functions MCP"]
     Function["Unity Catalog function"]
     Model["Foundation Model"]
+    UCModel["UC ResponsesAgent model<br/>@deployed"]
     Traces[("Unity Catalog traces")]
 
     User --> Omni
     Omni -->|"direct App invocation"| Agent
+    Playground --> UCModel
+    UCModel -. "App-backed model" .-> Agent
     Agent -->|"custom tools"| MCP
     Agent -->|"governed tools"| Managed
     Managed -->|"execute"| Function
@@ -167,7 +178,7 @@ flowchart LR
         DevCommit["Merge to dev"]
         DevSelect{"Which deployment<br/>units changed?"}
         DevRelease["For each selected unit:<br/>validate DAB → deploy → start"]
-        DevProof["Read back Gateway registration<br/>and smoke streaming + traces"]
+        DevProof["Verify Gateway + UC model alias<br/>and smoke streaming + traces"]
     end
 
     subgraph Promotion["Production guard"]
@@ -179,7 +190,7 @@ flowchart LR
         MainCommit["Merge the reviewed repository state<br/>to main"]
         ProdSelect{"Select units in the<br/>promoted commit range"}
         ProdRelease["For each selected unit:<br/>validate DAB → deploy → start"]
-        ProdProof["Read back Gateway registration<br/>and smoke streaming + traces"]
+        ProdProof["Verify Gateway + UC model alias<br/>and smoke streaming + traces"]
     end
 
     Change --> DevPR --> Quality
@@ -214,17 +225,23 @@ flowchart LR
     Folder["Agent folder"]
     Platform["Runtime + model policy"]
     Composer["Validate and compose"]
-    Generated["Generated App + dedicated DAB state"]
+    Generated["Generated App + UC model<br/>in dedicated DAB state"]
     Dev["dev App"]
+    DevModel["dev UC model @deployed"]
     DevGateway["dev Gateway Agent Service"]
     Prod["prod App"]
+    ProdModel["prod UC model @deployed"]
     ProdGateway["prod Gateway Agent Service"]
 
     Folder --> Composer
     Platform --> Composer
     Composer --> Generated
-    Generated --> Dev --> DevGateway
-    Generated --> Prod --> ProdGateway
+    Generated --> Dev
+    Dev --> DevModel
+    Dev --> DevGateway
+    Generated --> Prod
+    Prod --> ProdModel
+    Prod --> ProdGateway
 ```
 
 [Contract, generated runtime, and validation details](docs/architecture/folder-defined-agents.md)
@@ -244,7 +261,7 @@ Each target currently has seven App definitions:
 | `agent-*-openai-assistant` | Playground-compatible folder agent using the OpenAI SDK surface. |
 
 Dev and prod use the same sandpit workspace but have different App names,
-schemas, functions, experiments, trace tables,
+registered models and versions, schemas, functions, experiments, trace tables,
 [Agent Services in Unity Catalog](https://docs.databricks.com/aws/en/ai-gateway/agent-services),
 and bundle paths.
 
@@ -254,10 +271,13 @@ DAB deploys. CI reads the Agent Service and grants back from the API and fails
 the deployment unless the App connection origin, base path, `EXECUTE`, and
 `READ_METADATA` match the platform contract.
 
-The fixed LangChain App and folder-defined Apps are MLflow ResponsesAgent
-Apps and therefore work in AI Playground. Omnigent remains the supervising
-application and Gateway service; it is not presented as a separate
-ResponsesAgent model.
+The fixed LangChain App and four folder-defined Apps each have a DAB-owned UC
+registered model. CI creates an MLflow ResponsesAgent version only after its
+App is healthy, assigns the `deployed` alias, and records the App name, target,
+and Git commit as model-version tags. The model delegates to the App runtime,
+so this adds Unity Catalog and Playground discovery without duplicating the
+agent on Model Serving. Omnigent remains a supervising application and Gateway
+service; it is not registered as a ResponsesAgent model.
 
 ## Repository map
 
@@ -267,6 +287,7 @@ ResponsesAgent model.
 | [`agent_platform/`](agent_platform) | Platform model policy and injected App runtime. |
 | [`examples/external-agent/`](examples/external-agent) | The same platform tracing boundary on compute hosted outside Databricks. |
 | [`scripts/compose_agents.py`](scripts/compose_agents.py) | Strict contract validation and deterministic DAB composition. |
+| [`scripts/register_uc_model.py`](scripts/register_uc_model.py) | Idempotent MLflow model-version registration, aliasing, and signature verification. |
 | [`src/`](src) | LangChain, custom MCP, and Omnigent implementations, each with its own DAB. |
 | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) | Quality, promotion, and deployment workflow. |
 
