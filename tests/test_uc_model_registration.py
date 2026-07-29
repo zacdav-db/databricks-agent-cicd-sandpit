@@ -38,6 +38,12 @@ app_proxy_model = _load_module(
 DatabricksAppResponsesAgent = app_proxy_model.DatabricksAppResponsesAgent
 
 
+def test_deployment_environment_can_access_uc_model_artifacts() -> None:
+    requirements = (ROOT / "requirements-deploy.txt").read_text().splitlines()
+
+    assert any(requirement.startswith("boto3") for requirement in requirements)
+
+
 class _StreamingBody(io.BytesIO):
     def __iter__(self):
         while chunk := self.readline():
