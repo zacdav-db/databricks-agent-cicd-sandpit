@@ -78,9 +78,14 @@ deployment succeeds. Each agent DAB also owns a
 After the App passes its smoke test, CI logs an MLflow ResponsesAgent model
 version, points its `deployed` alias at that version, and verifies its standard
 signature, streaming flag, App dependency, and commit provenance. This makes
-the agent discoverable as a model in Unity Catalog and compatible with
-[AI Playground](https://docs.databricks.com/aws/en/large-language-models/ai-playground).
-Inference still runs on the Databricks App; no Model Serving endpoint is
+the release discoverable and versioned in Unity Catalog. It does not create an
+online endpoint or a Playground selector entry.
+
+The online agent identity is the App itself: `apps/<app-name>`. Its `agent-`
+name, `/agent/info` metadata, `/responses` API, supported signature, and
+`CAN_USE` permission are the
+[AI Playground-compatible App contract](https://docs.databricks.com/aws/en/agents/custom-agents/author-agent).
+Inference still runs only on the Databricks App; no Model Serving endpoint is
 created. The DAB grants the configured sandpit user `EXECUTE` on the model;
 App `users` permissions remain a separate workspace-level control.
 
@@ -145,8 +150,8 @@ flowchart LR
 
     User --> Omni
     Omni -->|"direct App invocation"| Agent
-    Playground --> UCModel
-    UCModel -. "App-backed model" .-> Agent
+    Playground -->|"apps/agent-..."| Agent
+    UCModel -. "versioned release record" .-> Agent
     Agent -->|"custom tools"| MCP
     Agent -->|"governed tools"| Managed
     Managed -->|"execute"| Function
@@ -276,9 +281,30 @@ The fixed LangChain App and four folder-defined Apps each have a DAB-owned UC
 registered model. CI creates an MLflow ResponsesAgent version only after its
 App is healthy, assigns the `deployed` alias, and records the App name, target,
 and Git commit as model-version tags. The model delegates to the App runtime,
-so this adds Unity Catalog and Playground discovery without duplicating the
-agent on Model Serving. Omnigent remains a supervising application and Gateway
-service; it is not registered as a ResponsesAgent model.
+so this adds a versioned Unity Catalog record without duplicating the agent on
+Model Serving. It does not publish the UC model into AI Playground; the App
+identity is the callable agent. Omnigent remains a supervising application and
+Gateway service; it is not registered as a ResponsesAgent model.
+
+### Playground identity
+
+Search for the App name, such as `agent-dev-sandpit-langchain`, rather than the
+UC model name. Programmatic clients use the same App identity:
+
+```python
+response = client.responses.create(
+    model="apps/agent-dev-sandpit-langchain",
+    input=[{"role": "user", "content": "Hello"}],
+)
+```
+
+A healthy UC model or Unity Catalog Agent Service does not add a selector
+entry. The current
+[Agent Services beta](https://docs.databricks.com/aws/en/ai-gateway/agent-services#limitations)
+does not support runtime invocation. If `apps/<app-name>` succeeds but the App
+is absent from the Playground selector, the workspace has not enabled or
+received the agent selector experience; there is no documented DAB or
+registration API that can force that UI rollout.
 
 ## Repository map
 
