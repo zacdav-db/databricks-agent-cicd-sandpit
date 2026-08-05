@@ -33,7 +33,7 @@ def invoke_langchain_agent(message: str) -> dict[str, str]:
     """
     response = _responses_client().responses.create(
         model=f"apps/{os.environ['LANGCHAIN_AGENT_APP_NAME']}",
-        input=message,
+        input=[{"role": "user", "content": message}],
         extra_headers={"x-mlflow-return-trace-id": "true"},
     )
     output = response.output_text

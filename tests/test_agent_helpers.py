@@ -900,7 +900,7 @@ def test_omnigent_direct_tool_invokes_langchain_app(
     assert calls == [
         {
             "model": "apps/agent-dev-sandpit-langchain",
-            "input": "question",
+            "input": [{"role": "user", "content": "question"}],
             "extra_headers": {"x-mlflow-return-trace-id": "true"},
         },
     ]
