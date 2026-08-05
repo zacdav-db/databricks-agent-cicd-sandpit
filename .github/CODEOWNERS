@@ -7,4 +7,4 @@
 /.github/workflows/ @zacdav-db
 /agent_platform/requirements.txt @zacdav-db
 /requirements-ci.txt @zacdav-db
-/requirements-deploy.txt @zacdav-db
+/requirements-deploy*.txt @zacdav-db

@@ -20,6 +20,7 @@ AGENT_MODEL_PLATFORM_PATHS = (
     "scripts/register_uc_model.py",
 )
 DEPLOYMENT_PLATFORM_PATHS = (
+    "requirements-deploy-core.txt",
     "requirements-deploy.txt",
     "scripts/app_names.py",
     "scripts/bootstrap_resources.py",
