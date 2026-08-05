@@ -748,6 +748,38 @@ def test_ci_promotes_dev_to_main_before_production() -> None:
         assert deploy_step["env"]["HEAD_SHA"] == "${{ github.sha }}"
     assert "Block implicit agent deletion or rename" in quality_steps
 
+    package_steps = workflow["jobs"]["package-deployment"]["steps"]
+    package_step = next(
+        step
+        for step in package_steps
+        if step.get("name") == "Build wheelhouse for the authorized deployment runner"
+    )
+    assert package_step["env"]["DEPLOYMENT_SELECTION"] == (
+        "${{ needs.select-deployments.outputs.selection }}"
+    )
+    assert "requirements-deploy-core.txt" in package_step["run"]
+    assert "requirements-deploy.txt" in package_step["run"]
+    for job_name in ("deploy-dev", "deploy-prod"):
+        install_step = next(
+            step
+            for step in workflow["jobs"][job_name]["steps"]
+            if step.get("name") == "Install deployment dependencies"
+        )
+        assert "deploy-package/requirements.txt" in install_step["run"]
+
+
+def test_core_deployment_dependencies_exclude_model_registration_stack() -> None:
+    requirements = (
+        ROOT / "requirements-deploy-core.txt"
+    ).read_text(encoding="utf-8").splitlines()
+
+    assert "databricks-sdk==0.123.0" in requirements
+    assert "mlflow-skinny==3.14.0" in requirements
+    assert not any(
+        requirement.startswith(("boto3", "databricks-openai", "numpy", "pandas"))
+        for requirement in requirements
+    )
+
 
 def test_omnigent_cost_policy_asks_at_each_new_dollar() -> None:
     module = _load(

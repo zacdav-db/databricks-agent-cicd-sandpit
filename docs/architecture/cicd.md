@@ -222,9 +222,11 @@ The workspace IP ACL rejects ephemeral GitHub-hosted addresses. Only deployment
 jobs use the repository-scoped `sandpit-deploy` self-hosted macOS ARM64 runner
 on an authorized network. Pull-request validation stays on GitHub-hosted Linux.
 The hosted job builds a one-day macOS 12 ARM64 wheelhouse so the
-network-restricted deployment runner does not need PyPI access. macOS 12 is the
-minimum compatible wheel target for the supported Responses client dependency
-set; the authorized runner itself is newer.
+network-restricted deployment runner does not need PyPI access. It packages the
+small bootstrap/Gateway dependency set for MCP- or Omnigent-only changes and
+adds the Responses client and MLflow model stack only when a selected unit
+registers a UC model. macOS 12 is the minimum compatible wheel target for that
+full dependency set; the authorized runner itself is newer.
 
 Databricks Apps themselves run on Linux/Python 3.11. The deployment client is
 macOS only because that is the currently authorized runner. If an authorized
