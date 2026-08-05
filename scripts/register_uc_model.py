@@ -24,7 +24,8 @@ DEPLOYED_ALIAS = "deployed"
 MODEL_ARTIFACT_NAME = "app_agent"
 MODEL_PIP_REQUIREMENTS = (
     "cloudpickle>=3,<4",
-    "databricks-sdk==0.122.0",
+    "databricks-openai==0.17.0",
+    "databricks-sdk==0.123.0",
     "mlflow-skinny==3.14.0",
     "numpy>=1.26,<3",
     "pandas>=2,<3",

@@ -12,10 +12,10 @@ import tempfile
 import time
 import urllib.request
 
-from databricks.sdk import WorkspaceClient
-
 LOCAL_AUTH_HEADER = "X-Omnigent-Local-Identity"
 RUNNER_ENV_PASSTHROUGH = "OMNIGENT_RUNNER_ENV_PASSTHROUGH"
+OMNIGENT_PACKAGE = "omnigent[databricks]==0.6.0"
+DATABRICKS_OPENAI_PACKAGE = "databricks-openai==0.17.0"
 
 
 def _require_env(name: str) -> str:
@@ -46,14 +46,6 @@ def _write_app_profile() -> pathlib.Path:
     return config_path
 
 
-def _app_url(client: WorkspaceClient, env_name: str) -> str:
-    app_name = _require_env(env_name)
-    app = client.apps.get(name=app_name)
-    if not app.url:
-        raise RuntimeError(f"Databricks App {app_name} does not have a URL.")
-    return app.url.rstrip("/")
-
-
 def _configure_single_user_identity() -> None:
     """Use one Omnigent identity behind the Databricks App auth boundary."""
     os.environ["OMNIGENT_LOCAL_SINGLE_USER"] = "1"
@@ -61,14 +53,28 @@ def _configure_single_user_identity() -> None:
 
 
 def _configure_runner_environment() -> None:
-    """Pass the deployment-owned App URL to Omnigent child runners."""
+    """Pass the deployment-owned App name to Omnigent child runners."""
     names = {
         name.strip()
         for name in os.getenv(RUNNER_ENV_PASSTHROUGH, "").split(",")
         if name.strip()
     }
-    names.add("LANGCHAIN_AGENT_URL")
+    names.add("LANGCHAIN_AGENT_APP_NAME")
     os.environ[RUNNER_ENV_PASSTHROUGH] = ",".join(sorted(names))
+
+
+def _uvx_prefix() -> list[str]:
+    """Build the isolated Omnigent command with deployment-owned tools."""
+    return [
+        "uvx",
+        "--python",
+        "3.12",
+        "--from",
+        OMNIGENT_PACKAGE,
+        "--with",
+        DATABRICKS_OPENAI_PACKAGE,
+        "omni",
+    ]
 
 
 def _render_agent_bundle() -> pathlib.Path:
@@ -138,7 +144,6 @@ def _wait_for_children(
 
 
 def main() -> None:
-    client = WorkspaceClient()
     profile_path = _write_app_profile()
     agent_bundle: pathlib.Path | None = None
     server: subprocess.Popen[bytes] | None = None
@@ -166,24 +171,14 @@ def main() -> None:
         _configure_single_user_identity()
         os.environ["DATABRICKS_CONFIG_FILE"] = str(profile_path)
         os.environ["DATABRICKS_CONFIG_PROFILE"] = "app"
-        os.environ["LANGCHAIN_AGENT_URL"] = _app_url(
-            client,
-            "LANGCHAIN_AGENT_APP_NAME",
-        )
+        _require_env("LANGCHAIN_AGENT_APP_NAME")
         _configure_runner_environment()
         agent_bundle = _render_agent_bundle()
 
         port = os.getenv("DATABRICKS_APP_PORT", "8000")
         # Databricks Apps builds Python applications with Python 3.11.
         # Omnigent 0.6 requires 3.12, so uv supplies an isolated runtime.
-        uvx_prefix = [
-            "uvx",
-            "--python",
-            "3.12",
-            "--from",
-            "omnigent[databricks]==0.6.0",
-            "omni",
-        ]
+        uvx_prefix = _uvx_prefix()
         server = subprocess.Popen(
             [
                 *uvx_prefix,

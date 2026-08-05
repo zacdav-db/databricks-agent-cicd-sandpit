@@ -171,7 +171,7 @@ def _mcp_scalar(result: dict[str, Any]) -> str:
     """Return one scalar value from an MCP tool response."""
     for payload in _mcp_json_payloads(result):
         candidate = payload.get("result", payload) if isinstance(payload, dict) else payload
-        if isinstance(candidate, (str, int, float, bool)):
+        if isinstance(candidate, str | int | float | bool):
             return str(candidate)
     raise RuntimeError(f"MCP result did not contain a scalar value: {result}")
 
@@ -182,8 +182,11 @@ def _wait_for_app(client: WorkspaceClient, name: str, timeout: int = 900) -> str
     while time.monotonic() < deadline:
         app = client.apps.get(name=name)
         last_status = app.as_dict()
-        if last_status.get("app_status", {}).get("state") == "RUNNING" and app.url:
+        state = last_status.get("app_status", {}).get("state")
+        if state == "RUNNING" and app.url:
             return app.url.rstrip("/")
+        if state == "CRASHED":
+            raise RuntimeError(f"App {name} crashed during startup: {last_status}")
         time.sleep(10)
     raise TimeoutError(f"App {name} did not become ready: {last_status}")
 
@@ -674,17 +677,12 @@ def main() -> None:
         f"{args.uc_function.rsplit('.', maxsplit=1)[0]}."
         f"{args.target}_sandpit_langchain_agent"
     )
-    agent_service = _api_json(
-        client,
-        "GET",
-        (
-            f"{client.config.host.rstrip('/')}/api/2.1/unity-catalog/"
-            f"agent-services/{agent_service_name}"
-        ),
+    agent_service = client.ai_gateway.get_agent_service(
+        f"agent-services/{agent_service_name}",
     )
-    if agent_service.get("name", "").removeprefix("agent-services/") != agent_service_name:
+    if (agent_service.name or "").removeprefix("agent-services/") != agent_service_name:
         raise RuntimeError(f"Unexpected UC Agent Service: {agent_service}")
-    if agent_service.get("config", {}).get("base_path") != "/responses":
+    if agent_service.config is None or agent_service.config.base_path != "/responses":
         raise RuntimeError(f"Unexpected Agent Service base path: {agent_service}")
     _progress("The LangChain App is discoverable as a Unity Catalog Agent Service.")
 

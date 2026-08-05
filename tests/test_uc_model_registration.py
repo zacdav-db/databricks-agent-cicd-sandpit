@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import io
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -42,22 +41,20 @@ def test_deployment_environment_can_access_uc_model_artifacts() -> None:
     requirements = (ROOT / "requirements-deploy.txt").read_text().splitlines()
 
     assert any(requirement.startswith("boto3") for requirement in requirements)
+    assert any(
+        requirement.startswith("databricks-openai") for requirement in requirements
+    )
+    assert "databricks-openai==0.17.0" in register_uc_model.MODEL_PIP_REQUIREMENTS
 
 
-class _StreamingBody(io.BytesIO):
-    def __iter__(self):
-        while chunk := self.readline():
-            yield chunk
-
-
-class _FakeApiClient:
+class _FakeResponses:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
 
-    def do(self, method: str, **kwargs: Any) -> dict[str, Any]:
-        self.calls.append({"method": method, **kwargs})
-        if not kwargs.get("raw"):
-            return {
+    def create(self, **kwargs: Any) -> object:
+        self.calls.append(kwargs)
+        if not kwargs["stream"]:
+            payload = {
                 "object": "response",
                 "output": [
                     {
@@ -68,39 +65,43 @@ class _FakeApiClient:
                     },
                 ],
             }
-        body = (
-            'data: {"type":"response.output_text.delta",'
-            '"item_id":"msg_1","delta":"hel"}\n\n'
-            'data: {"type":"response.output_text.delta",'
-            '"item_id":"msg_1","delta":"lo"}\n\n'
-            'data: {"type":"response.output_item.done","item":'
-            '{"type":"message","id":"msg_1","role":"assistant","content":'
-            '[{"type":"output_text","text":"hello"}]}}\n\n'
-            "data: [DONE]\n\n"
-        )
-        return {
-            "Content-Type": "text/event-stream; charset=utf-8",
-            "contents": _StreamingBody(body.encode()),
-        }
+            return SimpleNamespace(model_dump=lambda **_kwargs: payload)
+        events = [
+            {
+                "type": "response.output_text.delta",
+                "item_id": "msg_1",
+                "delta": "hel",
+            },
+            {
+                "type": "response.output_text.delta",
+                "item_id": "msg_1",
+                "delta": "lo",
+            },
+            {
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "message",
+                    "id": "msg_1",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "hello"}],
+                },
+            },
+        ]
+        return [
+            SimpleNamespace(model_dump=lambda event=event, **_kwargs: event)
+            for event in events
+        ]
 
 
-def _proxy() -> tuple[Any, _FakeApiClient]:
-    api_client = _FakeApiClient()
-    workspace = SimpleNamespace(
-        api_client=api_client,
-        apps=SimpleNamespace(
-            get=lambda *, name: SimpleNamespace(
-                url=f"https://{name}.example",
-            ),
-        ),
-    )
+def _proxy() -> tuple[Any, _FakeResponses]:
+    responses = _FakeResponses()
     proxy = DatabricksAppResponsesAgent("agent-dev-example")
-    proxy._workspace_client = workspace
-    return proxy, api_client
+    proxy._openai_client = SimpleNamespace(responses=responses)
+    return proxy, responses
 
 
 def test_app_proxy_preserves_responses_contract() -> None:
-    proxy, api_client = _proxy()
+    proxy, responses = _proxy()
     request = ResponsesAgentRequest(
         input=[{"role": "user", "content": "hello"}],
     )
@@ -108,14 +109,12 @@ def test_app_proxy_preserves_responses_contract() -> None:
     response = proxy.predict(request)
 
     assert response.output[0].content[0]["text"] == "hello"
-    assert api_client.calls[0]["url"] == (
-        "https://agent-dev-example.example/responses"
-    )
-    assert api_client.calls[0]["body"]["stream"] is False
+    assert responses.calls[0]["model"] == "apps/agent-dev-example"
+    assert responses.calls[0]["stream"] is False
 
 
 def test_app_proxy_preserves_stream_events() -> None:
-    proxy, api_client = _proxy()
+    proxy, responses = _proxy()
     request = ResponsesAgentRequest(
         input=[{"role": "user", "content": "hello"}],
     )
@@ -128,7 +127,8 @@ def test_app_proxy_preserves_stream_events() -> None:
         "response.output_item.done",
     ]
     assert events[0].delta == "hel"
-    assert api_client.calls[0]["body"]["stream"] is True
+    assert responses.calls[0]["model"] == "apps/agent-dev-example"
+    assert responses.calls[0]["stream"] is True
 
 
 def test_app_proxy_excludes_live_sdk_client_from_model_artifact() -> None:
@@ -142,7 +142,7 @@ def test_app_proxy_excludes_live_sdk_client_from_model_artifact() -> None:
 
     assert restored.app_name == "agent-dev-example"
     assert restored._workspace_client is None
-    assert restored._app_url is None
+    assert restored._openai_client is None
 
 
 def test_app_proxy_rejects_non_agent_app_names() -> None:

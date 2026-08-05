@@ -192,7 +192,7 @@ def _validate_python(folder: Path, entrypoint: str) -> None:
         (
             node
             for node in entrypoint_tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
             and node.name == function_name
         ),
         None,
@@ -206,7 +206,7 @@ def _validate_python(folder: Path, entrypoint: str) -> None:
         (
             node
             for node in entrypoint_tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
             and node.name == stream_name
         ),
         None,
@@ -425,7 +425,7 @@ def _bundle_config(agent: AgentDefinition) -> dict[str, Any]:
     return {
         "bundle": {
             "name": f"sandpit-folder-agent-{agent.name}",
-            "databricks_cli_version": ">= 1.7.0, < 2.0.0",
+            "databricks_cli_version": ">= 1.10.0, < 2.0.0",
         },
         "variables": variables,
         "sync": {"include": ["app/**"]},
@@ -480,7 +480,7 @@ def _legacy_bundle_config(agents: list[AgentDefinition]) -> dict[str, Any]:
     return {
         "bundle": {
             "name": "sandpit-agent-cicd",
-            "databricks_cli_version": ">= 1.7.0, < 2.0.0",
+            "databricks_cli_version": ">= 1.10.0, < 2.0.0",
         },
         "variables": {
             "resource_prefix": {},
