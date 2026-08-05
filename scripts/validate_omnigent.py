@@ -16,7 +16,7 @@ sys.path.insert(0, str(AGENT.parent))
 def main() -> None:
     defaults = {
         "DATABRICKS_CONFIG_PROFILE": "sandpit",
-        "LANGCHAIN_AGENT_URL": "https://agent.example.databricksapps.com",
+        "LANGCHAIN_AGENT_APP_NAME": "agent-dev-sandpit-langchain",
         "MODEL_ENDPOINT": "databricks-claude-sonnet-4-5",
     }
     for key, value in defaults.items():

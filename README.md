@@ -13,7 +13,8 @@ This repository is an example of how teams can:
   every deployed agent both as a versioned
   [Unity Catalog model](https://docs.databricks.com/aws/en/machine-learning/manage-model-lifecycle/)
   and in
-  [Unity AI Gateway](https://docs.databricks.com/aws/en/ai-gateway/) as a
+  [Unity AI Gateway](https://www.databricks.com/blog/unity-ai-gateway-generally-available)
+  as a
   governed
   [Unity Catalog Agent Service](https://docs.databricks.com/aws/en/ai-gateway/agent-services).
 - Promote applications and agents through a protected dev-to-prod process
@@ -299,12 +300,31 @@ response = client.responses.create(
 ```
 
 A healthy UC model or Unity Catalog Agent Service does not add a selector
-entry. The current
-[Agent Services beta](https://docs.databricks.com/aws/en/ai-gateway/agent-services#limitations)
+entry. Unity AI Gateway is GA, but its current
+[Agent Services child surface remains beta](https://docs.databricks.com/aws/en/ai-gateway/agent-services#limitations)
 does not support runtime invocation. If `apps/<app-name>` succeeds but the App
 is absent from the Playground selector, the workspace has not enabled or
 received the agent selector experience; there is no documented DAB or
 registration API that can force that UI rollout.
+
+### Supported API boundary
+
+The repository uses the supported clients available after the Unity AI Gateway
+GA release:
+
+| Operation | Implementation |
+| --- | --- |
+| Create, read, and update Agent Services | [`WorkspaceClient.ai_gateway`](https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/ai_gateway.html) from Databricks SDK `0.123.0` |
+| Read and update Agent Service grants | [`WorkspaceClient.grants`](https://databricks-sdk-py.readthedocs.io/en/latest/workspace/catalog/grants.html) |
+| Invoke or stream an agent App | [`DatabricksOpenAI.responses.create(model="apps/<name>")`](https://docs.databricks.com/aws/en/agents/agent-framework/query-agent) |
+
+There is still no Agent Service, MCP Service, HTTP connection, or Unity
+Catalog function resource in the
+[DAB `1.10.0` supported-resource list](https://docs.databricks.com/aws/en/dev-tools/bundles/resources).
+Those objects remain deployment steps around each isolated DAB. The custom MCP
+is a Databricks App, not an external MCP Service: the current
+[MCP Service limitation](https://docs.databricks.com/aws/en/agents/agent-framework/mcp-services#limitations)
+does not allow an App to be registered as an MCP Service.
 
 ## Repository map
 
@@ -315,6 +335,7 @@ registration API that can force that UI rollout.
 | [`examples/external-agent/`](examples/external-agent) | The same platform tracing boundary on compute hosted outside Databricks. |
 | [`scripts/compose_agents.py`](scripts/compose_agents.py) | Strict contract validation and deterministic DAB composition. |
 | [`scripts/register_uc_model.py`](scripts/register_uc_model.py) | Idempotent MLflow model-version registration, aliasing, and signature verification. |
+| [`scripts/register_uc_agent.py`](scripts/register_uc_agent.py) | Typed SDK reconciliation and verification for Agent Services and grants. |
 | [`src/`](src) | LangChain, custom MCP, and Omnigent implementations, each with its own DAB. |
 | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) | Quality, promotion, and deployment workflow. |
 

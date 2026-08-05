@@ -375,54 +375,69 @@ def test_uc_registration_extends_the_sdk_client(
         def create(self, **kwargs: object) -> None:
             self.created = kwargs
 
-    class FakeApiClient:
+    class FakeAiGateway:
         def __init__(self) -> None:
-            self.calls: list[tuple[str, str, dict[str, object]]] = []
-            self.service_exists = False
+            self.created: dict[str, object] | None = None
+            self.updated: dict[str, object] | None = None
+            self.service: object | None = None
 
-        def do(self, method: str, path: str, **kwargs: object) -> dict[str, object]:
-            self.calls.append((method, path, kwargs))
-            if method == "GET" and "permissions/AGENT_SERVICE" in path:
-                return {
-                    "privilege_assignments": [
-                        {
-                            "principal": "owner@example.com",
-                            "privileges": ["EXECUTE", "READ_METADATA"],
-                        },
-                    ],
-                }
-            if method == "GET" and not self.service_exists:
+        def get_agent_service(self, _name: str) -> object:
+            if self.service is None:
                 raise FakeNotFound
-            if method == "GET":
-                return {
-                    "name": "agent-services/catalog_name.schema_name.agent_service",
-                    "agent_service_type": "AGENT_SERVICE_TYPE_EXTERNAL",
-                    "config": {
-                        "connection": {
-                            "name": (
-                                "connections/"
-                                "catalog_name.schema_name.agent_connection"
-                            ),
-                        },
-                        "base_path": "/responses",
-                    },
-                }
-            if method == "POST":
-                self.service_exists = True
-            return {}
+            return self.service
+
+        def create_agent_service(self, **kwargs: object) -> object:
+            self.created = kwargs
+            service = kwargs["agent_service"]
+            service.name = "agent-services/catalog_name.schema_name.agent_service"
+            self.service = service
+            return service
+
+        def update_agent_service(self, **kwargs: object) -> object:
+            self.updated = kwargs
+            return self.service
+
+    class FakeGrants:
+        def __init__(self) -> None:
+            self.securable_type: str | None = None
+            self.full_name: str | None = None
+            self.changes: list[object] = []
+
+        def update(
+            self,
+            securable_type: str,
+            full_name: str,
+            *,
+            changes: list[object],
+        ) -> object:
+            self.securable_type = securable_type
+            self.full_name = full_name
+            self.changes = changes
+            return SimpleNamespace()
+
+        def get(self, _securable_type: str, _full_name: str) -> object:
+            return SimpleNamespace(
+                privilege_assignments=[
+                    SimpleNamespace(
+                        principal="owner@example.com",
+                        privileges=[
+                            module.Privilege.EXECUTE,
+                            module.Privilege.READ_METADATA,
+                        ],
+                    ),
+                ],
+            )
 
     class FakeWorkspaceClient:
-        connections = FakeConnections()
-        api_client = FakeApiClient()
-        config = type(
-            "Config",
-            (),
-            {
-                "host": "https://workspace.example",
-                "client_id": "client-id",
-                "client_secret": "client-secret",
-            },
-        )()
+        def __init__(self) -> None:
+            self.connections = FakeConnections()
+            self.ai_gateway = FakeAiGateway()
+            self.grants = FakeGrants()
+            self.config = SimpleNamespace(
+                host="https://workspace.example",
+                client_id="client-id",
+                client_secret="client-secret",
+            )
 
     monkeypatch.setattr(module, "NotFound", FakeNotFound)
     client = FakeWorkspaceClient()
@@ -435,6 +450,16 @@ def test_uc_registration_extends_the_sdk_client(
         app_url="https://agent.example",
     )
     service = module._upsert_agent_service(
+        client,
+        catalog="catalog_name",
+        schema="schema_name",
+        service_name="agent_service",
+        connection_full_name=connection,
+        target="dev",
+        base_path="/responses",
+        system_prompt="Be concise.",
+    )
+    module._upsert_agent_service(
         client,
         catalog="catalog_name",
         schema="schema_name",
@@ -469,25 +494,21 @@ def test_uc_registration_extends_the_sdk_client(
         "schemas/catalog_name.schema_name"
     )
     assert client.connections.created["options"]["client_id"] == "client-id"
-    assert client.api_client.calls[1][2]["query"]["agent_service_id"] == (
-        "agent_service"
+    assert client.ai_gateway.created["agent_service_id"] == "agent_service"
+    assert client.ai_gateway.updated["update_mask"].ToJsonString() == (
+        "comment,config.system_prompt,config.base_path"
     )
-    grant = next(
-        call
-        for call in client.api_client.calls
-        if call[0] == "PATCH" and "permissions/AGENT_SERVICE" in call[1]
+    created_service = client.ai_gateway.created["agent_service"]
+    assert created_service.config.source_connection.name == (
+        "connections/catalog_name.schema_name.agent_connection"
     )
-    assert grant[:2] == (
-        "PATCH",
-        (
-            "/api/2.1/unity-catalog/permissions/AGENT_SERVICE/"
-            "catalog_name.schema_name.agent_service"
-        ),
-    )
-    assert grant[2]["body"]["changes"][0] == {
-        "principal": "owner@example.com",
-        "add": ["EXECUTE", "READ_METADATA"],
-    }
+    assert client.grants.securable_type == "AGENT_SERVICE"
+    assert client.grants.full_name == "catalog_name.schema_name.agent_service"
+    assert client.grants.changes[0].principal == "owner@example.com"
+    assert client.grants.changes[0].add == [
+        module.Privilege.EXECUTE,
+        module.Privilege.READ_METADATA,
+    ]
 
 
 def test_existing_gateway_connection_requires_the_current_app_origin() -> None:
@@ -524,26 +545,27 @@ def test_gateway_registration_fails_without_required_grants() -> None:
     )
     with pytest.raises(RuntimeError, match="READ_METADATA"):
         module._validate_gateway_registration(
-            service={
-                "name": "agent-services/catalog_name.schema_name.agent_service",
-                "agent_service_type": "AGENT_SERVICE_TYPE_EXTERNAL",
-                "config": {
-                    "connection": {
-                        "name": (
-                            "connections/catalog_name.schema_name.agent_connection"
+            service=module.AgentService(
+                name="agent-services/catalog_name.schema_name.agent_service",
+                agent_service_type=module.AGENT_SERVICE_TYPE,
+                config=module.AgentServiceConfig(
+                    source_connection=module.AgentServiceConfigSourceConnection(
+                        name=(
+                            "connections/"
+                            "catalog_name.schema_name.agent_connection"
                         ),
-                    },
-                    "base_path": "/responses",
-                },
-            },
-            grants={
-                "privilege_assignments": [
-                    {
-                        "principal": "owner@example.com",
-                        "privileges": ["EXECUTE"],
-                    },
+                    ),
+                    base_path="/responses",
+                ),
+            ),
+            grants=SimpleNamespace(
+                privilege_assignments=[
+                    SimpleNamespace(
+                        principal="owner@example.com",
+                        privileges=[module.Privilege.EXECUTE],
+                    ),
                 ],
-            },
+            ),
             service_full_name="catalog_name.schema_name.agent_service",
             connection_full_name="catalog_name.schema_name.agent_connection",
             base_path="/responses",
@@ -792,7 +814,7 @@ def test_omnigent_launcher_uses_one_identity_behind_app_auth(
     assert module.LOCAL_AUTH_HEADER != "X-Forwarded-Email"
 
 
-def test_omnigent_launcher_passes_app_url_to_child_runners(
+def test_omnigent_launcher_passes_app_name_to_child_runners(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _load(
@@ -801,13 +823,13 @@ def test_omnigent_launcher_passes_app_url_to_child_runners(
     )
     monkeypatch.setenv(
         module.RUNNER_ENV_PASSTHROUGH,
-        "EXISTING_SETTING, LANGCHAIN_AGENT_URL",
+        "EXISTING_SETTING, LANGCHAIN_AGENT_APP_NAME",
     )
 
     module._configure_runner_environment()
 
     assert module.os.environ[module.RUNNER_ENV_PASSTHROUGH] == (
-        "EXISTING_SETTING,LANGCHAIN_AGENT_URL"
+        "EXISTING_SETTING,LANGCHAIN_AGENT_APP_NAME"
     )
 
 
@@ -818,40 +840,32 @@ def test_omnigent_direct_tool_invokes_langchain_app(
         "omnigent_agent_tools",
         ROOT / "src" / "omnigent_app" / "agent_tools.py",
     )
-    calls: list[tuple[str, str, dict[str, str]]] = []
+    calls: list[dict[str, object]] = []
 
-    class FakeApiClient:
-        def do(
-            self,
-            method: str,
-            *,
-            url: str,
-            body: dict[str, str],
-        ) -> dict[str, str]:
-            calls.append((method, url, body))
-            return {
-                "output": "answer",
-                "trace_id": "trace-id",
-                "internal": "not part of the tool contract",
-            }
+    class FakeResponses:
+        def create(self, **kwargs: object) -> object:
+            calls.append(kwargs)
+            return SimpleNamespace(
+                output_text="answer",
+                metadata={"trace_id": "trace-id"},
+            )
 
     class FakeClient:
-        api_client = FakeApiClient()
+        responses = FakeResponses()
 
-    monkeypatch.setenv("DATABRICKS_CONFIG_PROFILE", "app")
-    monkeypatch.setenv("LANGCHAIN_AGENT_URL", "https://langchain.example/")
-    monkeypatch.setattr(module, "_workspace_client", lambda: FakeClient())
+    monkeypatch.setenv("LANGCHAIN_AGENT_APP_NAME", "agent-dev-sandpit-langchain")
+    monkeypatch.setattr(module, "_responses_client", lambda: FakeClient())
 
     assert module.invoke_langchain_agent("question") == {
         "output": "answer",
         "trace_id": "trace-id",
     }
     assert calls == [
-        (
-            "POST",
-            "https://langchain.example/api/invocations",
-            {"input": "question"},
-        ),
+        {
+            "model": "apps/agent-dev-sandpit-langchain",
+            "input": "question",
+            "extra_headers": {"x-mlflow-return-trace-id": "true"},
+        },
     ]
 
 

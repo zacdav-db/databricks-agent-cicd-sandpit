@@ -1,2 +1,3 @@
-databricks-sdk>=0.72,<1
+databricks-sdk==0.123.0
+databricks-openai==0.17.0
 uv==0.11.16

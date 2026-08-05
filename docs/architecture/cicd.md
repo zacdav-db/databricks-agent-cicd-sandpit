@@ -59,8 +59,8 @@ For a selected unit, “deployed” means the complete transaction succeeds:
 
 1. Validate its independently stateful DAB.
 2. Deploy its App and UC registered-model securable, then start only that App.
-3. Register the agent and read its Unity AI Gateway configuration and grants
-   back.
+3. Register the agent with the generated Unity AI Gateway SDK client and read
+   its configuration and grants back.
 4. Exercise the streaming Responses API and confirm the trace is queryable.
 5. Create or reuse the commit's MLflow model version, move the `deployed`
    alias, and verify its ResponsesAgent signature, streaming flag, App
@@ -99,8 +99,8 @@ A merged pull request pushes to `dev`. GitHub Actions then:
 3. Builds a short-lived deployment wheelhouse only for a deployable change.
 4. Bootstraps `dev_agent_cicd` only when an App deployment is selected.
 5. Validates, deploys, and starts only the selected unit.
-6. Registers each selected agent App in Unity AI Gateway, reads its Agent
-   Service and grants back, and fails closed on any mismatch.
+6. Registers each selected agent App with `WorkspaceClient.ai_gateway`, reads
+   its Agent Service and grants back, and fails closed on any mismatch.
 7. Smoke-tests the selected unit. For any runtime-App change, it also exercises
    the complete Omnigent → LangChain → custom MCP path without redeploying
    unchanged consumers.

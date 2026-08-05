@@ -109,9 +109,9 @@ def _plain_value(value: Any) -> Any:
         value = value.model_dump(exclude_none=True)
     if isinstance(value, dict):
         return {key: _plain_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [_plain_value(item) for item in value]
-    if isinstance(value, (str, int, float, bool)) or value is None:
+    if isinstance(value, str | int | float | bool) or value is None:
         return value
     return str(value)
 

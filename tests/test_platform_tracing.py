@@ -254,7 +254,7 @@ def test_external_author_has_no_platform_tracing_dependency() -> None:
     imports = {
         alias.name.split(".", maxsplit=1)[0]
         for node in ast.walk(ast.parse(author_source))
-        if isinstance(node, (ast.Import, ast.ImportFrom))
+        if isinstance(node, ast.Import | ast.ImportFrom)
         for alias in (
             node.names
             if isinstance(node, ast.Import)

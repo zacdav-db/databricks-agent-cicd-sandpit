@@ -157,7 +157,7 @@ async def _author_chunks(message: str) -> AsyncGenerator[str, None]:
             yield _validate_chunk(chunk)
     elif hasattr(stream_result, "__iter__") and not isinstance(
         stream_result,
-        (str, bytes, dict),
+        str | bytes | dict,
     ):
         iterator = iter(stream_result)
         while True:
