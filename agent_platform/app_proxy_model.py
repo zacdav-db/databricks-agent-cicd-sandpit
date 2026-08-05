@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from databricks.sdk import WorkspaceClient
-from databricks_openai import DatabricksOpenAI
 from mlflow.pyfunc import ResponsesAgent
 from mlflow.types.responses import (
     ResponsesAgentRequest,
     ResponsesAgentResponse,
     ResponsesAgentStreamEvent,
 )
+
+if TYPE_CHECKING:
+    from databricks_openai import DatabricksOpenAI
 
 
 class DatabricksAppResponsesAgent(ResponsesAgent):
@@ -40,6 +42,8 @@ class DatabricksAppResponsesAgent(ResponsesAgent):
 
     def _responses_client(self) -> DatabricksOpenAI:
         if self._openai_client is None:
+            from databricks_openai import DatabricksOpenAI
+
             self._openai_client = DatabricksOpenAI(workspace_client=self._client())
         return self._openai_client
 

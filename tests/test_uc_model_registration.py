@@ -41,6 +41,10 @@ def test_deployment_environment_can_access_uc_model_artifacts() -> None:
     requirements = (ROOT / "requirements-deploy.txt").read_text().splitlines()
 
     assert any(requirement.startswith("boto3") for requirement in requirements)
+    assert not any(
+        requirement.startswith("databricks-openai") for requirement in requirements
+    )
+    assert "databricks-openai==0.17.0" in register_uc_model.MODEL_PIP_REQUIREMENTS
 
 
 class _FakeResponses:
