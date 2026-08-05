@@ -14,6 +14,8 @@ import urllib.request
 
 LOCAL_AUTH_HEADER = "X-Omnigent-Local-Identity"
 RUNNER_ENV_PASSTHROUGH = "OMNIGENT_RUNNER_ENV_PASSTHROUGH"
+OMNIGENT_PACKAGE = "omnigent[databricks]==0.6.0"
+DATABRICKS_OPENAI_PACKAGE = "databricks-openai==0.17.0"
 
 
 def _require_env(name: str) -> str:
@@ -59,6 +61,20 @@ def _configure_runner_environment() -> None:
     }
     names.add("LANGCHAIN_AGENT_APP_NAME")
     os.environ[RUNNER_ENV_PASSTHROUGH] = ",".join(sorted(names))
+
+
+def _uvx_prefix() -> list[str]:
+    """Build the isolated Omnigent command with deployment-owned tools."""
+    return [
+        "uvx",
+        "--python",
+        "3.12",
+        "--from",
+        OMNIGENT_PACKAGE,
+        "--with",
+        DATABRICKS_OPENAI_PACKAGE,
+        "omni",
+    ]
 
 
 def _render_agent_bundle() -> pathlib.Path:
@@ -162,14 +178,7 @@ def main() -> None:
         port = os.getenv("DATABRICKS_APP_PORT", "8000")
         # Databricks Apps builds Python applications with Python 3.11.
         # Omnigent 0.6 requires 3.12, so uv supplies an isolated runtime.
-        uvx_prefix = [
-            "uvx",
-            "--python",
-            "3.12",
-            "--from",
-            "omnigent[databricks]==0.6.0",
-            "omni",
-        ]
+        uvx_prefix = _uvx_prefix()
         server = subprocess.Popen(
             [
                 *uvx_prefix,
