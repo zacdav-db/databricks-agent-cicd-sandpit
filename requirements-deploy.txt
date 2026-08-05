@@ -1,6 +1,5 @@
 cloudpickle>=3,<4
 boto3>=1.28,<2
-databricks-openai==0.17.0
 databricks-sdk==0.123.0
 mlflow-skinny==3.14.0
 numpy>=1.26,<3
