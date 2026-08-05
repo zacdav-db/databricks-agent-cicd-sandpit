@@ -833,6 +833,43 @@ def test_omnigent_launcher_passes_app_name_to_child_runners(
     )
 
 
+def test_omnigent_runtime_includes_supported_responses_client() -> None:
+    module = _load(
+        "omnigent_launcher_supported_client",
+        ROOT / "src" / "omnigent_app" / "launch.py",
+    )
+
+    assert module._uvx_prefix() == [
+        "uvx",
+        "--python",
+        "3.12",
+        "--from",
+        "omnigent[databricks]==0.6.0",
+        "--with",
+        "databricks-openai==0.17.0",
+        "omni",
+    ]
+
+
+def test_app_readiness_fails_fast_when_process_crashes() -> None:
+    module = _load(
+        "smoke_test_app_crash",
+        ROOT / "scripts" / "smoke_test.py",
+    )
+    app = SimpleNamespace(
+        url="https://crashed-app.example",
+        as_dict=lambda: {
+            "app_status": {"state": "CRASHED", "message": "process exited"},
+        },
+    )
+    client = SimpleNamespace(
+        apps=SimpleNamespace(get=lambda *, name: app),
+    )
+
+    with pytest.raises(RuntimeError, match="crashed during startup"):
+        module._wait_for_app(client, "crashed-app")
+
+
 def test_omnigent_direct_tool_invokes_langchain_app(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

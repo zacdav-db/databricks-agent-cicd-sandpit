@@ -182,8 +182,11 @@ def _wait_for_app(client: WorkspaceClient, name: str, timeout: int = 900) -> str
     while time.monotonic() < deadline:
         app = client.apps.get(name=name)
         last_status = app.as_dict()
-        if last_status.get("app_status", {}).get("state") == "RUNNING" and app.url:
+        state = last_status.get("app_status", {}).get("state")
+        if state == "RUNNING" and app.url:
             return app.url.rstrip("/")
+        if state == "CRASHED":
+            raise RuntimeError(f"App {name} crashed during startup: {last_status}")
         time.sleep(10)
     raise TimeoutError(f"App {name} did not become ready: {last_status}")
 
