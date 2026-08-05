@@ -1,12 +1,12 @@
-"""MLflow ResponsesAgent model that delegates inference to a Databricks App."""
+"""MLflow ResponsesAgent model that delegates through the supported Apps API."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterator
 from typing import Any
 
 from databricks.sdk import WorkspaceClient
+from databricks_openai import DatabricksOpenAI
 from mlflow.pyfunc import ResponsesAgent
 from mlflow.types.responses import (
     ResponsesAgentRequest,
@@ -23,7 +23,7 @@ class DatabricksAppResponsesAgent(ResponsesAgent):
             raise ValueError("Agent App names must start with agent-.")
         self.app_name = app_name
         self._workspace_client: WorkspaceClient | None = None
-        self._app_url: str | None = None
+        self._openai_client: DatabricksOpenAI | None = None
 
     def _client(self) -> WorkspaceClient:
         if self._workspace_client is None:
@@ -35,64 +35,46 @@ class DatabricksAppResponsesAgent(ResponsesAgent):
         return {
             "app_name": self.app_name,
             "_workspace_client": None,
-            "_app_url": None,
+            "_openai_client": None,
         }
 
-    def _url(self) -> str:
-        if self._app_url is None:
-            app = self._client().apps.get(name=self.app_name)
-            if not app.url:
-                raise RuntimeError(f"Databricks App {self.app_name} has no URL.")
-            self._app_url = f"{app.url.rstrip('/')}/responses"
-        return self._app_url
+    def _responses_client(self) -> DatabricksOpenAI:
+        if self._openai_client is None:
+            self._openai_client = DatabricksOpenAI(workspace_client=self._client())
+        return self._openai_client
 
     @staticmethod
-    def _payload(request: ResponsesAgentRequest, *, stream: bool) -> dict[str, Any]:
-        payload = request.model_dump(exclude_none=True)
-        payload["stream"] = stream
-        return payload
+    def _request_options(request: ResponsesAgentRequest) -> dict[str, Any]:
+        options = request.model_dump(exclude_none=True)
+        options.pop("stream", None)
+        extension_fields = {
+            name: options.pop(name)
+            for name in ("custom_inputs", "context")
+            if name in options
+        }
+        if extension_fields:
+            options["extra_body"] = extension_fields
+        return options
 
     def predict(
         self,
         request: ResponsesAgentRequest,
     ) -> ResponsesAgentResponse:
-        response = self._client().api_client.do(
-            "POST",
-            url=self._url(),
-            body=self._payload(request, stream=False),
+        response = self._responses_client().responses.create(
+            model=f"apps/{self.app_name}",
+            stream=False,
+            **self._request_options(request),
         )
-        if not isinstance(response, dict):
-            raise RuntimeError("Agent App returned a non-object response.")
-        return ResponsesAgentResponse(**response)
+        return ResponsesAgentResponse(**response.model_dump(exclude_none=True))
 
     def predict_stream(
         self,
         request: ResponsesAgentRequest,
     ) -> Iterator[ResponsesAgentStreamEvent]:
-        response = self._client().api_client.do(
-            "POST",
-            url=self._url(),
-            body=self._payload(request, stream=True),
-            headers={"Accept": "text/event-stream"},
-            raw=True,
-            response_headers=["Content-Type"],
+        stream = self._responses_client().responses.create(
+            model=f"apps/{self.app_name}",
+            stream=True,
+            **self._request_options(request),
         )
-        if (
-            not isinstance(response, dict)
-            or "text/event-stream" not in response.get("Content-Type", "")
-            or "contents" not in response
-        ):
-            raise RuntimeError("Agent App did not return an SSE response.")
-
-        with response["contents"] as contents:
-            for chunk in contents:
-                for line in chunk.decode("utf-8").splitlines():
-                    if not line.startswith("data:"):
-                        continue
-                    data = line.removeprefix("data:").strip()
-                    if data == "[DONE]":
-                        return
-                    event = json.loads(data)
-                    if error := event.get("error"):
-                        raise RuntimeError(f"Agent App stream failed: {error}")
-                    yield ResponsesAgentStreamEvent(**event)
+        for event in stream:
+            yield ResponsesAgentStreamEvent(**event.model_dump(exclude_none=True))

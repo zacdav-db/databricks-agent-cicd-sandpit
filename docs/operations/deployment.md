@@ -4,7 +4,7 @@
 
 - Python 3.12+
 - `uv` 0.11.16+
-- Databricks CLI 1.7.x
+- Databricks CLI 1.10.x
 - `jq`
 - A valid `sandpit` profile
 - OAuth M2M credentials in `DATABRICKS_CLIENT_ID` and

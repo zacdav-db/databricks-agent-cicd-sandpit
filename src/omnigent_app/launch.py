@@ -12,8 +12,6 @@ import tempfile
 import time
 import urllib.request
 
-from databricks.sdk import WorkspaceClient
-
 LOCAL_AUTH_HEADER = "X-Omnigent-Local-Identity"
 RUNNER_ENV_PASSTHROUGH = "OMNIGENT_RUNNER_ENV_PASSTHROUGH"
 
@@ -46,14 +44,6 @@ def _write_app_profile() -> pathlib.Path:
     return config_path
 
 
-def _app_url(client: WorkspaceClient, env_name: str) -> str:
-    app_name = _require_env(env_name)
-    app = client.apps.get(name=app_name)
-    if not app.url:
-        raise RuntimeError(f"Databricks App {app_name} does not have a URL.")
-    return app.url.rstrip("/")
-
-
 def _configure_single_user_identity() -> None:
     """Use one Omnigent identity behind the Databricks App auth boundary."""
     os.environ["OMNIGENT_LOCAL_SINGLE_USER"] = "1"
@@ -61,13 +51,13 @@ def _configure_single_user_identity() -> None:
 
 
 def _configure_runner_environment() -> None:
-    """Pass the deployment-owned App URL to Omnigent child runners."""
+    """Pass the deployment-owned App name to Omnigent child runners."""
     names = {
         name.strip()
         for name in os.getenv(RUNNER_ENV_PASSTHROUGH, "").split(",")
         if name.strip()
     }
-    names.add("LANGCHAIN_AGENT_URL")
+    names.add("LANGCHAIN_AGENT_APP_NAME")
     os.environ[RUNNER_ENV_PASSTHROUGH] = ",".join(sorted(names))
 
 
@@ -138,7 +128,6 @@ def _wait_for_children(
 
 
 def main() -> None:
-    client = WorkspaceClient()
     profile_path = _write_app_profile()
     agent_bundle: pathlib.Path | None = None
     server: subprocess.Popen[bytes] | None = None
@@ -166,10 +155,7 @@ def main() -> None:
         _configure_single_user_identity()
         os.environ["DATABRICKS_CONFIG_FILE"] = str(profile_path)
         os.environ["DATABRICKS_CONFIG_PROFILE"] = "app"
-        os.environ["LANGCHAIN_AGENT_URL"] = _app_url(
-            client,
-            "LANGCHAIN_AGENT_APP_NAME",
-        )
+        _require_env("LANGCHAIN_AGENT_APP_NAME")
         _configure_runner_environment()
         agent_bundle = _render_agent_bundle()
 

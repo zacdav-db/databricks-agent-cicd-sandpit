@@ -1,4 +1,5 @@
-databricks-sdk==0.122.0
+databricks-openai==0.17.0
+databricks-sdk==0.123.0
 mlflow[databricks]>=3.14.0,<4
 omnigent[databricks]==0.6.0
 packaging>=24,<26

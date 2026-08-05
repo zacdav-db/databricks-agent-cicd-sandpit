@@ -7,7 +7,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 from app_names import (
     generated_agent_app_name,
@@ -16,9 +16,19 @@ from app_names import (
 )
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.errors import NotFound
-from databricks.sdk.service.catalog import ConnectionType
+from databricks.sdk.service.catalog import (
+    AgentService,
+    AgentServiceAgentServiceType,
+    AgentServiceConfig,
+    AgentServiceConfigSourceConnection,
+    ConnectionType,
+    FieldMask,
+    GetPermissionsResponse,
+    PermissionsChange,
+    Privilege,
+)
 
-AGENT_SERVICE_TYPE = "AGENT_SERVICE_TYPE_EXTERNAL"
+AGENT_SERVICE_TYPE = AgentServiceAgentServiceType.AGENT_SERVICE_TYPE_EXTERNAL
 DEFAULT_METADATA_PRINCIPAL = "zachary.davies@databricks.com"
 REQUIRED_PRIVILEGES = frozenset({"EXECUTE", "READ_METADATA"})
 
@@ -202,7 +212,7 @@ def _upsert_connection(
             connection_type=ConnectionType.HTTP,
             comment=(
                 "DAB-managed OAuth connection to a sandpit Agent App. Used by "
-                "the Unity Catalog Agent Service beta."
+                "the Unity Catalog Agent Service."
             ),
             options=options,
         )
@@ -223,48 +233,56 @@ def _upsert_agent_service(
     system_prompt: str,
 ) -> str:
     full_name = f"{catalog}.{schema}.{service_name}"
-    path = f"/api/2.1/unity-catalog/agent-services/{quote(full_name, safe='.')}"
+    resource_name = f"agent-services/{full_name}"
     try:
-        existing = workspace_client.api_client.do("GET", path)
+        existing = workspace_client.ai_gateway.get_agent_service(resource_name)
     except NotFound:
         existing = None
     comment = (
         f"Agent App deployed by DAB target {target} and registered in Unity AI "
         "Gateway as a Unity Catalog Agent Service."
     )
-    config = {
-        "connection": {"name": f"connections/{connection_full_name}"},
-        "base_path": base_path,
-        "system_prompt": system_prompt,
-    }
+    source_connection = AgentServiceConfigSourceConnection(
+        name=f"connections/{connection_full_name}",
+    )
+    config = AgentServiceConfig(
+        source_connection=source_connection,
+        base_path=base_path,
+        system_prompt=system_prompt,
+    )
     if existing is None:
-        workspace_client.api_client.do(
-            "POST",
-            "/api/2.1/unity-catalog/agent-services",
-            query={
-                "parent": f"schemas/{catalog}.{schema}",
-                "agent_service_id": service_name,
-            },
-            body={
-                "agent_service_type": AGENT_SERVICE_TYPE,
-                "comment": comment,
-                "config": config,
-            },
+        workspace_client.ai_gateway.create_agent_service(
+            parent=f"schemas/{catalog}.{schema}",
+            agent_service_id=service_name,
+            agent_service=AgentService(
+                agent_service_type=AGENT_SERVICE_TYPE,
+                comment=comment,
+                config=config,
+            ),
         )
     else:
         existing_connection = (
-            existing.get("config", {}).get("connection", {}).get("name", "")
+            existing.config.source_connection.name
+            if existing.config and existing.config.source_connection
+            else ""
         )
         if existing_connection.removeprefix("connections/") != connection_full_name:
             raise RuntimeError(
                 f"Agent Service {full_name} references unexpected connection "
                 f"{existing_connection!r}.",
             )
-        workspace_client.api_client.do(
-            "PATCH",
-            path,
-            query={"update_mask": "comment,config.system_prompt,config.base_path"},
-            body={"comment": comment, "config": config},
+        workspace_client.ai_gateway.update_agent_service(
+            name=resource_name,
+            agent_service=AgentService(
+                comment=comment,
+                config=AgentServiceConfig(
+                    base_path=base_path,
+                    system_prompt=system_prompt,
+                ),
+            ),
+            update_mask=FieldMask(
+                ["comment", "config.system_prompt", "config.base_path"],
+            ),
         )
     return full_name
 
@@ -274,75 +292,68 @@ def _grant_metadata(
     agent_service_full_name: str,
     principal: str,
 ) -> None:
-    workspace_client.api_client.do(
-        "PATCH",
-        (
-            "/api/2.1/unity-catalog/permissions/AGENT_SERVICE/"
-            f"{quote(agent_service_full_name, safe='.')}"
-        ),
-        body={
-            "changes": [
-                {
-                    "principal": principal,
-                    "add": ["EXECUTE", "READ_METADATA"],
-                },
-            ],
-        },
+    workspace_client.grants.update(
+        "AGENT_SERVICE",
+        agent_service_full_name,
+        changes=[
+            PermissionsChange(
+                principal=principal,
+                add=[Privilege.EXECUTE, Privilege.READ_METADATA],
+            ),
+        ],
     )
 
 
 def _validate_gateway_registration(
     *,
-    service: dict[str, object],
-    grants: dict[str, object],
+    service: AgentService,
+    grants: GetPermissionsResponse,
     service_full_name: str,
     connection_full_name: str,
     base_path: str,
     principal: str,
 ) -> list[str]:
     """Fail closed unless the Gateway service and grants match the contract."""
-    actual_name = str(service.get("name", "")).removeprefix("agent-services/")
+    actual_name = (service.name or "").removeprefix("agent-services/")
     if actual_name != service_full_name:
         raise RuntimeError(
             f"Gateway Agent Service name is {actual_name!r}, "
             f"expected {service_full_name!r}.",
         )
-    if service.get("agent_service_type") != AGENT_SERVICE_TYPE:
+    if service.agent_service_type != AGENT_SERVICE_TYPE:
         raise RuntimeError(
             f"Gateway Agent Service {service_full_name} has unexpected type "
-            f"{service.get('agent_service_type')!r}.",
+            f"{service.agent_service_type!r}.",
         )
 
-    config = service.get("config")
-    if not isinstance(config, dict):
+    config = service.config
+    if config is None:
         raise RuntimeError(
             f"Gateway Agent Service {service_full_name} has no configuration.",
         )
-    connection = config.get("connection")
-    if not isinstance(connection, dict):
+    connection = config.source_connection
+    if connection is None:
         raise RuntimeError(
             f"Gateway Agent Service {service_full_name} has no connection.",
         )
-    actual_connection = str(connection.get("name", "")).removeprefix("connections/")
+    actual_connection = connection.name.removeprefix("connections/")
     if actual_connection != connection_full_name:
         raise RuntimeError(
             f"Gateway Agent Service {service_full_name} references "
             f"{actual_connection!r}, expected {connection_full_name!r}.",
         )
-    if config.get("base_path") != base_path:
+    if config.base_path != base_path:
         raise RuntimeError(
             f"Gateway Agent Service {service_full_name} uses base path "
-            f"{config.get('base_path')!r}, expected {base_path!r}.",
+            f"{config.base_path!r}, expected {base_path!r}.",
         )
 
-    assignments = grants.get("privilege_assignments")
-    if not isinstance(assignments, list):
-        assignments = []
+    assignments = grants.privilege_assignments or []
     privileges = {
-        str(privilege)
+        privilege.value
         for assignment in assignments
-        if isinstance(assignment, dict) and assignment.get("principal") == principal
-        for privilege in assignment.get("privileges", [])
+        if assignment.principal == principal
+        for privilege in assignment.privileges or []
     }
     missing = REQUIRED_PRIVILEGES - privileges
     if missing:
@@ -365,19 +376,13 @@ def verify_gateway_registration(
     """Read back and verify the Gateway Agent Service and required grants."""
     service_full_name = f"{catalog}.{schema}.{registration.service_name}"
     connection_full_name = f"{catalog}.{schema}.{registration.connection_name}"
-    encoded_name = quote(service_full_name, safe=".")
-    service = workspace_client.api_client.do(
-        "GET",
-        f"/api/2.1/unity-catalog/agent-services/{encoded_name}",
+    service = workspace_client.ai_gateway.get_agent_service(
+        f"agent-services/{service_full_name}",
     )
-    grants = workspace_client.api_client.do(
-        "GET",
-        f"/api/2.1/unity-catalog/permissions/AGENT_SERVICE/{encoded_name}",
+    grants = workspace_client.grants.get(
+        "AGENT_SERVICE",
+        service_full_name,
     )
-    if not isinstance(service, dict) or not isinstance(grants, dict):
-        raise RuntimeError(
-            f"Gateway registration read-back failed for {service_full_name}.",
-        )
     connection = workspace_client.connections.get(connection_full_name)
     _require_connection_origin(
         connection,

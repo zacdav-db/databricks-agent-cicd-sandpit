@@ -212,7 +212,7 @@ jobs:
           fetch-depth: 2
       - uses: databricks/setup-cli@8b7b124dc4f5b9621e959ea61cf4d3dd4e421f67
         with:
-          version: 1.7.0
+          version: 1.10.0
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           version: "0.11.16"
@@ -259,7 +259,7 @@ jobs:
           fetch-depth: 2
       - uses: databricks/setup-cli@8b7b124dc4f5b9621e959ea61cf4d3dd4e421f67
         with:
-          version: 1.7.0
+          version: 1.10.0
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           version: "0.11.16"

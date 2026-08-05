@@ -72,9 +72,10 @@ Each DAB maps its supported objects at the strongest level currently available:
   its tools alongside the managed function tools.
 - The Omnigent DAB declares the LangChain App as a
   [Databricks App resource](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/apps-resource)
-  with `CAN_USE`. Its deployment-owned function tool invokes LangChain's
-  `/api/invocations` endpoint directly.
-- External clients and the LangChain Agent Service use `/responses`. A
+  with `CAN_USE`. Its deployment-owned function tool invokes LangChain through
+  the supported Databricks OpenAI Responses client and the `apps/<name>`
+  identity.
+- External clients and Omnigent use `/responses`. A
   `"stream": true` request receives text deltas as LangGraph emits model
   chunks, followed by the completed item, MLflow trace ID, and terminal SSE
   event.
@@ -103,25 +104,26 @@ Each DAB maps its supported objects at the strongest level currently available:
 - Registration is fail-closed. CI reads the service and permission records
   back and checks the expected App connection, base path, service type, and
   grants before smoke testing the agent.
-- Agent Services currently provide beta inventory and permissions. Live
-  traffic continues to use the DAB-deployed App endpoints. The current beta
-  does not support runtime invocation and therefore does not populate the
-  Playground selector.
+- Unity AI Gateway is GA. Agent Services remain a beta child surface that
+  provides inventory and permissions but not runtime invocation. Live traffic
+  therefore continues to use the DAB-deployed App endpoints, and Agent Service
+  registration does not populate the Playground selector.
 - The custom MCP remains a stateless Databricks App. Databricks does not
   currently support registering an App as a Unity Catalog MCP Service. Its
   App name starts with `mcp-`, as required for AI Playground discovery.
 - Trace data is governed in Unity Catalog rather than written to a shared,
   cross-target table.
 
-DAB CLI `1.7.x` provides first-class App and UC registered-model resources,
+DAB CLI `1.10.0` provides first-class App and UC registered-model resources,
 but not resource types for UC functions, HTTP connections, Agent Services, or
 MCP Services. Deployment therefore combines native DAB resources with three
 platform scripts:
 
 - `bootstrap_resources.py` creates the target schema, functions, and MLflow
   experiment before App bindings are deployed.
-- `register_uc_agent.py` uses `WorkspaceClient` and its authenticated API
-  client to reconcile and verify the beta Gateway Agent Service resources.
+- `register_uc_agent.py` uses the generated `WorkspaceClient.ai_gateway` and
+  `WorkspaceClient.grants` clients to reconcile and verify Agent Services and
+  their permissions without raw REST calls.
 - `register_uc_model.py` uses MLflow to create or reuse the commit's model
   version, assign its `deployed` alias, and verify its ResponsesAgent signature
   and App dependency.
